@@ -9,9 +9,15 @@ import { Queue } from 'bullmq'
 import 'multer'
 import { PrismaService } from 'src/prisma/prisma.service'
 import { CreateVideoDto } from './dto/create-video.dto'
-import dayjs from 'dayjs'
 import { VideoStatus } from '@prisma/client'
-import * as fs from 'fs'
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
+import utc from 'dayjs/plugin/utc'
+import timezone from 'dayjs/plugin/timezone'
+
+dayjs.extend(customParseFormat)
+dayjs.extend(utc)
+dayjs.extend(timezone)
 
 @Injectable()
 export class VideosService {
@@ -28,19 +34,40 @@ export class VideosService {
 		}
 
 		const safeDescription = dto.description?.trim() || ''
-		const scheduledAt = dto.scheduledTime
-			? dayjs(dto.scheduledTime).toDate()
-			: undefined
+		const targetTime = dayjs.tz(
+			dto.scheduledTime,
+			'DD.MM.YYYY HH:mm',
+			'Europe/Kyiv'
+		)
+
+		const currentTime = dayjs() // Текущее время
+		const delay = targetTime.diff(currentTime)
+
+		console.log(`Запланировано на: ${targetTime.format()}`)
+		console.log(`Текущее время сервера: ${currentTime.format()}`)
+		console.log(`Delay: ${delay} мс`)
 
 		const video = await this.prismaService.video.create({
 			data: {
 				description: safeDescription,
-				scheduledAt,
+				scheduledAt: targetTime.toDate(),
 				userId,
-				file: file.path,
+				file: 'https://res.cloudinary.com/dwbzak6xg/video/upload/v1785614496/nestjs_uploads/j3sdrs6pvwbqdhlxjn7f.mp4',
 				status: VideoStatus.PEDNING
 			}
 		})
+
+		if (delay > 0) {
+			await this.queue.add(
+				'uploaded',
+				{
+					videoId: video.id
+				},
+				{ delay }
+			)
+
+			return video
+		}
 
 		await this.queue.add('uploaded', {
 			videoId: video.id
