@@ -12,8 +12,7 @@ import { AccountsModule } from './accounts/accounts.module'
 import { BrowserModule } from './browser/browser.module'
 import { ServeStaticModule } from '@nestjs/serve-static'
 import { join } from 'path'
-import { VideosModule } from './videos/videos.module';
-import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { VideosModule } from './videos/videos.module'
 import appRoot from 'app-root-path'
 
 @Module({
@@ -35,8 +34,7 @@ import appRoot from 'app-root-path'
 		RedisModule,
 		AccountsModule,
 		BrowserModule,
-		VideosModule,
-		CloudinaryModule
+		VideosModule
 	],
 	controllers: [],
 	providers: []

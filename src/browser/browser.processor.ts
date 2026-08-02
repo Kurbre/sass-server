@@ -2,13 +2,11 @@ import { Processor, WorkerHost } from '@nestjs/bullmq'
 import { BadRequestException, Logger } from '@nestjs/common'
 import { BrowserSessionStatus, VideoStatus } from '@prisma/client'
 import { Job } from 'bullmq'
+import fs from 'fs'
 import { BrowserContext, chromium } from 'patchright'
+import path from 'path'
 import { PrismaService } from 'src/prisma/prisma.service'
 import { VideosService } from 'src/videos/videos.service'
-import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
-import fs from 'fs'
-import path from 'path'
 
 @Processor('browser')
 export class BrowserProcessor extends WorkerHost {
@@ -30,23 +28,16 @@ export class BrowserProcessor extends WorkerHost {
 		const { videoId } = job.data
 		const video = await this.videosService.findById(videoId)
 		let context
-		let tempFilePath = ''
+
+		const filePath = path.resolve(video.file)
 
 		try {
 			this.logger.log(`[Upload] Начало загрузки видео ${videoId}`)
 
 			// 1. Скачиваем видео во временный файл
-			const tempDir = path.join(process.cwd(), 'tmp')
-			if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir)
-			tempFilePath = path.join(tempDir, `${videoId}.mp4`)
-
-			const response = await fetch(video.file)
-			if (!response.ok || !response.body) {
-				throw new BadRequestException('Не удалось скачать видео по ссылке')
+			if (!fs.existsSync(filePath)) {
+				throw new BadRequestException(`Файл не найден на сервере: ${filePath}`)
 			}
-
-			const stream = Readable.fromWeb(response.body as any)
-			await pipeline(stream, fs.createWriteStream(tempFilePath))
 
 			// 2. Запуск браузера
 			context = await chromium.launchPersistentContext(
@@ -88,7 +79,7 @@ export class BrowserProcessor extends WorkerHost {
 			// 3. Загрузка файла (увеличен таймаут до 30 секунд для медленных серверов)
 			const fileInput = page.locator('input[type="file"]')
 			await fileInput.waitFor({ state: 'attached', timeout: 30000 })
-			await fileInput.setInputFiles(tempFilePath)
+			await fileInput.setInputFiles(filePath)
 
 			this.logger.log(`[Upload] Файл передан в браузер, ждем загрузки...`)
 
@@ -178,8 +169,8 @@ export class BrowserProcessor extends WorkerHost {
 				await context.close().catch(() => {})
 				this.logger.log(`[Upload] Браузер закрыт.`)
 			}
-			if (tempFilePath && fs.existsSync(tempFilePath)) {
-				fs.unlinkSync(tempFilePath)
+			if (filePath && fs.existsSync(filePath)) {
+				fs.unlinkSync(filePath)
 				this.logger.log(`[Upload] Временный файл удален.`)
 			}
 		}
@@ -245,7 +236,10 @@ export class BrowserProcessor extends WorkerHost {
 			}
 		})
 
-		const loggedIn = await this.waitForLogin(context)
+		const loggedIn = await this.waitForLogin(
+			context,
+			path.resolve(`tmp/${sessionId}.png`)
+		)
 
 		if (loggedIn) {
 			await this.prismaService.browserSession.update({
@@ -254,8 +248,14 @@ export class BrowserProcessor extends WorkerHost {
 					status: BrowserSessionStatus.CONNECTED
 				}
 			})
-
-			await context.close()
+		} else {
+			// Опционально: если за 5 минут не залогинились, можно менять статус на FAILED/TIMEOUT
+			await this.prismaService.browserSession.update({
+				where: { id: sessionId },
+				data: {
+					status: BrowserSessionStatus.EXPIRED
+				}
+			})
 		}
 	}
 
@@ -265,14 +265,18 @@ export class BrowserProcessor extends WorkerHost {
 		return cookies.some(c => c.name === 'sessionid')
 	}
 
-	private async waitForLogin(context: BrowserContext): Promise<boolean> {
+	private async waitForLogin(
+		context: BrowserContext,
+		filePath: string | undefined
+	): Promise<boolean> {
 		const checkIntervalMs = 45 * 1000 // 45 секунд
 		const timeoutMs = 5 * 60 * 1000 // 5 минут (300 секунд)
 		const startTime = Date.now()
 
-		while (Date.now() - startTime < timeoutMs) {
-			// Проверяем статус авторизации
-			try {
+		try {
+			while (Date.now() - startTime < timeoutMs) {
+				// Проверяем статус авторизации
+
 				const loggedIn = await this.isLoggedIn(context)
 				console.log(loggedIn)
 
@@ -284,12 +288,21 @@ export class BrowserProcessor extends WorkerHost {
 
 				// Ждем 45 секунд перед следующей проверкой
 				await new Promise(resolve => setTimeout(resolve, checkIntervalMs))
-			} catch (e) {
-				this.logger.error(
-					'Контекст браузера был закрыт до завершения авторизации.'
-				)
+			}
+		} catch (e) {
+			this.logger.error(
+				'Контекст браузера был закрыт до завершения авторизации.'
+			)
 
-				return false
+			return false
+		} finally {
+			if (context) {
+				await context.close().catch(() => {})
+				this.logger.log(`[Upload] Браузер закрыт.`)
+			}
+			if (filePath && fs.existsSync(filePath)) {
+				fs.unlinkSync(filePath)
+				this.logger.log(`[Upload] Временный файл удален.`)
 			}
 		}
 

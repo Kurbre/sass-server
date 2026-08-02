@@ -4,7 +4,7 @@ import {
 	NotAcceptableException,
 	NotFoundException
 } from '@nestjs/common'
-import { BrowserSessionStatus } from '@prisma/client'
+import { AccountType, BrowserSessionStatus } from '@prisma/client'
 import { Queue } from 'bullmq'
 import { PrismaService } from 'src/prisma/prisma.service'
 
@@ -23,7 +23,8 @@ export class AccountsService {
 			data: {
 				userId,
 				status: BrowserSessionStatus.CREATING,
-				expiresAt: date
+				expiresAt: date,
+				type: AccountType.TIKTOK
 			}
 		})
 

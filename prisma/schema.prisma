@@ -25,7 +25,7 @@ model Account {
   type AccountType
   connected Boolean @default(false)
 
-  username String?
+  username String
   profilePath String
 
   userId String
@@ -33,6 +33,8 @@ model Account {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([type, username])
 }
 
 enum AccountType {
@@ -57,7 +59,7 @@ model Video {
 }
 
 enum VideoStatus {
-  PEDNGING
+  PEDNING
   UPLOADING
   FAILED
   SCHEDULED
@@ -68,6 +70,8 @@ model BrowserSession {
   id          String @id @default(cuid())
 
   userId      String
+
+  type AccountType
 
   status      BrowserSessionStatus
 
