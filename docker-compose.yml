@@ -1,0 +1,32 @@
+services:
+  db_sass:
+    image: postgres:15 # версия PostgreSQL
+    container_name: db_sass
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - 5432:5432
+    volumes:
+      - db_sass:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis_sass:
+    image: redis:7-alpine
+    container_name: redis_sass
+    environment:
+      - TZ=Europe/Kyiv
+    restart: always
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_sass_data:/data
+
+volumes:
+  db_sass:
+  redis_sass_data:
