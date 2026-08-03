@@ -15,6 +15,12 @@ export class AccountsService {
 		@InjectQueue('browser') private readonly browserQueue: Queue
 	) {}
 
+	async logout(userId: string) {
+		await this.browserQueue.add('logout', { userId })
+
+		return { success: true }
+	}
+
 	async connectTiktok(userId: string) {
 		const date = new Date()
 		date.setMinutes(date.getMinutes() + 5)

@@ -22,6 +22,77 @@ export class BrowserProcessor extends WorkerHost {
 	async process(job: Job): Promise<any> {
 		if (job.name === 'create-browser') return this.createBrowser(job)
 		if (job.name === 'uploaded') return this.uploadVideo(job)
+		if (job.name === 'logout') return this.logout(job)
+	}
+
+	async logout(job: Job<{ userId: string }>) {
+		const { userId } = job.data
+		let context: BrowserContext | null = null
+
+		try {
+			this.logger.log(
+				`[Logout] Запуск браузера для выхода пользователя ${userId}...`
+			)
+
+			context = await chromium.launchPersistentContext(`profiles/${userId}`, {
+				headless: false, // Для логаута графический интерфейс не нужен, делаем headless
+				executablePath: '/usr/bin/google-chrome',
+				args: ['--no-sandbox', '--disable-setuid-sandbox']
+			})
+
+			const page = await context.newPage()
+			await page.goto('https://www.tiktok.com', {
+				waitUntil: 'domcontentloaded',
+				timeout: 30000
+			})
+
+			// Проверяем, залогинен ли пользователь вообще
+			const isLoggedIn = await this.isLoggedIn(context)
+
+			if (isLoggedIn) {
+				// Ищем профиль/меню и кликаем Log out
+				const moreButton = await page.getByRole('listitem', { name: 'More' })
+				await moreButton.waitFor({ state: 'visible' })
+				await moreButton.click()
+
+				const logoutBtn = page
+					.getByRole('listbox', { name: 'Log out' })
+					.or(page.getByText('Log out'))
+					.first()
+
+				await logoutBtn.click({ timeout: 5000 })
+
+				// Подтверждение выходя в модальном окне
+				const confirmLogout = page
+					.getByRole('button', { name: 'Log out' })
+					.last()
+				await confirmLogout.click({ timeout: 5000 })
+
+				await page.waitForTimeout(2000)
+			}
+
+			// Очищаем куки в контексте
+			await context.clearCookies()
+
+			this.logger.log(`[Logout] Успешный выход из TikTok для ${userId}`)
+		} catch (error) {
+			this.logger.error(
+				`[Logout] Ошибка клика выходя в TikTok: ${
+					error instanceof Error ? error.message : error
+				}. Принудительно очищаем профиль.`
+			)
+		} finally {
+			// Гарантированно закрываем браузер
+			if (context) {
+				await context.close().catch(() => {})
+			}
+
+			// В любом случае (успех или ошибка) чистим папку с диска
+			const profilePath = path.resolve(`profiles/${userId}`)
+			if (fs.existsSync(profilePath)) {
+				fs.rmSync(profilePath, { recursive: true, force: true })
+			}
+		}
 	}
 
 	async uploadVideo(job: Job<{ videoId: string }>) {

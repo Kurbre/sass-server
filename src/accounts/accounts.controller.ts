@@ -21,4 +21,10 @@ export class AccountsController {
 	) {
 		return this.accountsService.findSessionById(sessionId, userId)
 	}
+
+	@Auth()
+	@Post('logout/tiktok')
+	logout(@GetAuthUser('id') userId: string) {
+		return this.accountsService.logout(userId)
+	}
 }
