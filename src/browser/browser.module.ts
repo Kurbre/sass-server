@@ -16,6 +16,7 @@ import { BrowserUploadService } from './browser-upload.service'
 		BrowserLoginService,
 		BrowserUploadService
 	],
-	imports: [VideosModule, AccountsModule]
+	imports: [VideosModule, AccountsModule],
+	exports: [BrowserService]
 })
 export class BrowserModule {}

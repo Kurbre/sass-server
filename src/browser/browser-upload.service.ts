@@ -24,6 +24,7 @@ export class BrowserUploadService {
 		let context
 
 		const filePath = resolve(video.file)
+		let tiktokVideoUrl: string | null = null
 
 		try {
 			this.logger.log(`[Upload] Начало загрузки видео ${videoId}`)
@@ -51,6 +52,46 @@ export class BrowserUploadService {
 			)
 
 			const page = await context.newPage()
+
+			page.on('response', async response => {
+				try {
+					// Нас интересуют только POST-запросы
+					if (response.request().method() !== 'POST') return
+					const url = response.url()
+
+					// Фильтруем запросы, оставляя те, что похожи на публикацию
+					if (
+						/post|publish|item|commit|aweme|upload/i.test(url) &&
+						url.includes('tiktok')
+					) {
+						const json = await response.json()
+
+						// Ищем ID видео в разных вариантах структуры ответа TikTok
+						const itemId =
+							json?.item_id ||
+							json?.data?.item_id ||
+							json?.aweme_id ||
+							json?.aweme?.aweme_id ||
+							json?.video_id ||
+							json?.data?.share_info?.share_url ||
+							json?.single_post_resp_list?.[0]?.item_id // <-- ДОБАВЛЕНО СЮДА
+
+						if (itemId) {
+							if (typeof itemId === 'string' && itemId.startsWith('http')) {
+								tiktokVideoUrl = itemId
+							} else {
+								const username = video.account?.username || 'user'
+								tiktokVideoUrl = `https://www.tiktok.com/@${username}/video/${itemId}`
+							}
+							this.logger.log(
+								`[Upload] Успешно перехвачен URL видео из API: ${tiktokVideoUrl}`
+							)
+						}
+					}
+				} catch (e) {
+					// Игнорируем ответы без тела JSON или прерванные запросы
+				}
+			})
 
 			// Убрали глобальный хендлер 'Cancel', так как он ломал публикацию!
 			// Оставили только безопасные хендлеры:
@@ -167,6 +208,7 @@ export class BrowserUploadService {
 
 				// Ждем 5-7 секунд. Если модалки нет, скрипт пойдет дальше (упадет в catch)
 				await confirmBtn.waitFor({ state: 'visible', timeout: 7000 })
+
 				await confirmBtn.click()
 
 				this.logger.log(
@@ -201,7 +243,11 @@ export class BrowserUploadService {
 				videoId,
 				VideoStatus.POSTED,
 				100,
-				'Видео успешно опубликовано!'
+				'Видео успешно опубликовано!',
+				{
+					tiktokVideoUrl,
+					errorMessage: null
+				}
 			)
 
 			this.logger.log(`[Upload] Успех! Видео ${videoId} опубликовано.`)
@@ -222,7 +268,8 @@ export class BrowserUploadService {
 				videoId,
 				VideoStatus.FAILED,
 				0,
-				`Ошибка: ${errorMessage}`
+				`Ошибка: ${errorMessage}`,
+				{ errorMessage }
 			)
 
 			throw error
@@ -238,12 +285,26 @@ export class BrowserUploadService {
 		videoId: string,
 		status: VideoStatus,
 		progress: number,
-		message: string
+		message: string,
+		extraData?: {
+			tiktokVideoUrl?: string | null
+			errorMessage?: string | null
+		}
 	) {
-		// Обновляем статус в базе данных
+		const updateData: Record<string, any> = { status }
+
+		if (extraData?.tiktokVideoUrl !== undefined) {
+			updateData.tiktokVideoUrl = extraData.tiktokVideoUrl
+		}
+
+		if (extraData?.errorMessage !== undefined) {
+			updateData.errorMessage = extraData.errorMessage
+		}
+
+		// Обновляем запись в базе данных
 		await this.prismaService.video.update({
 			where: { id: videoId },
-			data: { status }
+			data: updateData
 		})
 
 		// Отправляем событие изменения статуса через веб-сокет
@@ -252,6 +313,8 @@ export class BrowserUploadService {
 			status,
 			progress,
 			message,
+			tiktokVideoUrl: extraData?.tiktokVideoUrl ?? null,
+			errorMessage: extraData?.errorMessage ?? null,
 			timestamp: new Date().toISOString()
 		})
 	}

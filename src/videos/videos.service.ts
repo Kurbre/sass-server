@@ -78,7 +78,13 @@ export class VideosService {
 	}
 
 	async findById(id: string) {
-		const video = await this.prismaService.video.findUnique({ where: { id } })
+		const video = await this.prismaService.video.findUnique({
+			where: { id },
+			include: {
+				account: true,
+				user: true
+			}
+		})
 		if (!video) throw new NotFoundException('Video not found')
 
 		return video

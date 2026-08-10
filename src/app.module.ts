@@ -12,6 +12,7 @@ import { RedisModule } from './redis/redis.module'
 import { UsersModule } from './users/users.module'
 import { VideosModule } from './videos/videos.module'
 import { EventsModule } from './events/events.module';
+import { CronTasksModule } from './cron-tasks/cron-tasks.module';
 
 @Module({
 	imports: [
@@ -33,7 +34,8 @@ import { EventsModule } from './events/events.module';
 		AccountsModule,
 		BrowserModule,
 		VideosModule,
-		EventsModule
+		EventsModule,
+		CronTasksModule
 	],
 	controllers: [],
 	providers: []

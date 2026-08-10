@@ -28,7 +28,7 @@ model Account {
   sessions BrowserSession[]
   videos Video[]
 
-  secuid String?
+  secuid String? @unique
 
   username String?
   profilePath String?
@@ -68,6 +68,9 @@ model Video {
   file String
 
   status VideoStatus
+
+  tiktokVideoUrl String?
+  errorMessage String?
 
   accountId   String
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)

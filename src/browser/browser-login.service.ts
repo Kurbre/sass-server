@@ -157,6 +157,42 @@ export class BrowserLoginService {
 					return
 				}
 
+				if (secuid) {
+					const existingAccount = await this.prismaService.account.findFirst({
+						where: {
+							secuid: secuid,
+							id: { not: session.accountId } // Исключаем текущий аккаунт
+						}
+					})
+
+					if (existingAccount) {
+						const errorMsg = `Этот TikTok аккаунт (${profilePath || username}) уже привязан в системе!`
+
+						await this.eventsGateway.emitToUser(
+							session.account.userId,
+							'tiktokAuth',
+							{
+								message: errorMsg,
+								isLogin: true,
+								isError: true,
+								sessionId: session.id,
+								accountId: session.accountId
+							}
+						)
+						this.logger.warn(`[Create Browser] ${errorMsg}`)
+
+						await context.clearCookies().catch(() => {})
+						shouldDeleteProfileFolder = true
+
+						await this.prismaService.browserSession.update({
+							where: { id: sessionId },
+							data: { status: BrowserSessionStatus.FAILED }
+						})
+
+						return
+					}
+				}
+
 				await this.prismaService.browserSession.update({
 					where: { id: sessionId },
 					data: {
@@ -173,6 +209,18 @@ export class BrowserLoginService {
 						secuid
 					},
 					userId
+				)
+
+				await this.eventsGateway.emitToUser(
+					session.account.userId,
+					'tiktokAuth',
+					{
+						message: `Вход в tiktok аккаунт успешно завершен.`,
+						isLogin: true,
+						isError: false,
+						sessionId: session.id,
+						accountId: session.accountId
+					}
 				)
 
 				await this.prismaService.browserSession.delete({
