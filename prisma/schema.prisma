@@ -27,6 +27,8 @@ model Account {
 
   sessions BrowserSession[]
 
+  secuid String?
+
   username String?
   profilePath String?
 

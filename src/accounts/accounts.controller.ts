@@ -33,8 +33,8 @@ export class AccountsController {
 	}
 
 	@Auth()
-	@Post('logout/tiktok')
-	logout(@GetAuthUser('id') userId: string) {
-		return this.accountsService.logout(userId)
+	@Post(':id/logout/tiktok')
+	logout(@GetAuthUser('id') userId: string, @Param('id') id: string) {
+		return this.accountsService.logout(id, userId)
 	}
 }

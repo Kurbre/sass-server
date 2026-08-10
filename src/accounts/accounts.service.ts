@@ -19,8 +19,10 @@ export class AccountsService {
 		@InjectQueue('browser') private readonly browserQueue: Queue
 	) {}
 
-	async logout(userId: string) {
-		await this.browserQueue.add('logout', { userId })
+	async logout(accountId: string, userId: string) {
+		await this.findById(accountId, userId)
+
+		await this.browserQueue.add('logout', { accountId, userId })
 
 		return { success: true }
 	}
@@ -91,7 +93,6 @@ export class AccountsService {
 		const account = await this.prismaService.account.findUnique({
 			where: { id }
 		})
-		console.log(account)
 		if (!account) throw new NotFoundException('Account not found')
 
 		if (account.userId !== userId)

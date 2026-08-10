@@ -4,120 +4,81 @@ import { existsSync, rmSync } from 'fs'
 import { BrowserContext, chromium, Page } from 'patchright'
 import path from 'path'
 import { BrowserLoginService } from './browser-login.service'
+import { AccountsService } from 'src/accounts/accounts.service'
 
 @Injectable()
 export class BrowserService {
 	private readonly logger = new Logger(BrowserService.name)
 
-	constructor(private readonly browserLoginService: BrowserLoginService) {}
+	constructor(private readonly accountsService: AccountsService) {}
 
-	async getTikTokId(accountId: string) {
+	async getTikTokSecuid(context: BrowserContext) {
+		try {
+			// 1. Быстрый метод: отправляем API-запрос напрямую через контекст браузера (с сохранившимися куками)
+			const apiResponse = await context.request.get(
+				'https://www.tiktok.com/passport/web/account/info/',
+				{ timeout: 5000 }
+			)
+
+			if (apiResponse.ok()) {
+				const json = await apiResponse.json()
+				const secUid = json?.data?.sec_user_id
+
+				if (secUid) {
+					this.logger.log(`[ID] secUid получен за 1 сек: ${secUid}`)
+					return secUid
+				}
+			}
+
+			// 2. Резервный метод: если API вернул 403 или пустой ответ, открываем легкую страницу
+			const page = await context.newPage()
+			try {
+				await page.goto('https://www.tiktok.com/login', {
+					waitUntil: 'commit', // Не ждем даже DOM, только установки сетевого соединения
+					timeout: 10000
+				})
+
+				const secUid = await page.evaluate(async () => {
+					try {
+						const res = await fetch('/passport/web/account/info/')
+						const data = await res.json()
+						return data?.data?.sec_user_id || null
+					} catch {
+						return null
+					}
+				})
+
+				if (!secUid || typeof secUid !== 'string') {
+					throw new Error('TikTok secUid not found. Сессия не авторизована.')
+				}
+
+				return secUid
+			} finally {
+				await page.close().catch(() => {})
+			}
+		} catch (error) {
+			this.logger.error(
+				`[ID] Ошибка получения secuid: ${error instanceof Error ? error.message : error}`
+			)
+			throw error
+		}
+	}
+
+	async logout(job: Job<{ accountId: string; userId: string }>) {
+		const { accountId, userId } = job.data
 		let context: BrowserContext | null = null
 
 		try {
+			this.logger.log(`[Logout] Запуск браузера для аккаунта ${accountId}...`)
+
 			context = await chromium.launchPersistentContext(
 				`profiles/${accountId}`,
 				{
-					headless: false,
-					executablePath: '/usr/bin/google-chrome'
+					headless: true, // Для логаута графический интерфейс не нужен, делаем headless
+					executablePath: '/usr/bin/google-chrome',
+					args: ['--no-sandbox', '--disable-setuid-sandbox']
 				}
 			)
-
-			const page = await context.newPage()
-			await page.goto('https://www.tiktok.com/', {
-				waitUntil: 'domcontentloaded'
-			})
-
-			const secUid = await this.getSecUid(page)
-
-			return { secUid }
-		} catch (error) {
-			this.logger.error(
-				`[ID] Ошибка: ${error instanceof Error ? error.message : error}`
-			)
-			throw error
-		} finally {
-			if (context) {
-				await context.close().catch(() => {})
-				this.logger.log(`[ID] Браузер закрыт.`)
-			}
-		}
-	}
-
-	private async getSecUid(page: Page): Promise<string> {
-		// 1. Ждем появления и инициализации структуры данных именно залогиненного пользователя
-		await page
-			.waitForFunction(
-				() => {
-					const script = document.getElementById(
-						'__UNIVERSAL_DATA_FOR_REHYDRATION__'
-					)
-					if (!script?.textContent) return false
-
-					try {
-						const data = JSON.parse(script.textContent)
-						const user =
-							data?.['__DEFAULT_SCOPE__']?.['webapp.app-context']?.user
-						return Boolean(user && user.secUid)
-					} catch {
-						return false
-					}
-				},
-				{ timeout: 15000, polling: 300 }
-			)
-			.catch(() => {
-				// Игнорируем таймаут waitForFunction, чтобы попробовать фолбэк
-			})
-
-		// 2. Извлекаем secUid из DOM или через прямой API-запрос текущей сессии
-		const secUid = await page.evaluate(async () => {
-			// Способ А: Из тега гидратации
-			const script = document.getElementById(
-				'__UNIVERSAL_DATA_FOR_REHYDRATION__'
-			)
-			if (script?.textContent) {
-				try {
-					const data = JSON.parse(script.textContent)
-					const user = data?.['__DEFAULT_SCOPE__']?.['webapp.app-context']?.user
-					if (user?.secUid) return user.secUid as string
-				} catch {}
-			}
-
-			// Способ Б (Фолбэк): Прямой запрос к внутреннему API сессии TikTok в контексте браузера
-			try {
-				const res = await fetch('/passport/web/account/info/')
-				const json = await res.json()
-				if (json?.data?.sec_user_id) {
-					return json.data.sec_user_id as string
-				}
-			} catch {}
-
-			return null
-		})
-
-		if (!secUid) {
-			throw new Error(
-				'TikTok secUid not found. Возможно, сессия не авторизована.'
-			)
-		}
-
-		return secUid
-	}
-
-	async logout(job: Job<{ userId: string }>) {
-		const { userId } = job.data
-		let context: BrowserContext | null = null
-
-		try {
-			this.logger.log(
-				`[Logout] Запуск браузера для выхода пользователя ${userId}...`
-			)
-
-			context = await chromium.launchPersistentContext(`profiles/${userId}`, {
-				headless: false, // Для логаута графический интерфейс не нужен, делаем headless
-				executablePath: '/usr/bin/google-chrome',
-				args: ['--no-sandbox', '--disable-setuid-sandbox']
-			})
 
 			const page = await context.newPage()
 			await page.goto('https://www.tiktok.com', {
@@ -126,7 +87,7 @@ export class BrowserService {
 			})
 
 			// Проверяем, залогинен ли пользователь вообще
-			const isLoggedIn = await this.browserLoginService.isLoggedIn(context)
+			const isLoggedIn = await this.isLoggedIn(context)
 
 			if (isLoggedIn) {
 				// Ищем профиль/меню и кликаем Log out
@@ -152,8 +113,6 @@ export class BrowserService {
 
 			// Очищаем куки в контексте
 			await context.clearCookies()
-
-			this.logger.log(`[Logout] Успешный выход из TikTok для ${userId}`)
 		} catch (error) {
 			this.logger.error(
 				`[Logout] Ошибка клика выходя в TikTok: ${
@@ -167,10 +126,30 @@ export class BrowserService {
 			}
 
 			// В любом случае (успех или ошибка) чистим папку с диска
-			const profilePath = path.resolve(`profiles/${userId}`)
+			const profilePath = path.resolve(`profiles/${accountId}`)
 			if (existsSync(profilePath)) {
 				rmSync(profilePath, { recursive: true, force: true })
 			}
+
+			await this.accountsService
+				.update(
+					accountId,
+					{
+						connected: false
+					},
+					userId
+				)
+				.catch(err =>
+					this.logger.error(`[Logout] Ошибка обновления БД: ${err.message}`)
+				)
+
+			this.logger.log(`[Logout] Процесс выхода для ${accountId} завершен.`)
 		}
+	}
+
+	async isLoggedIn(context: BrowserContext) {
+		const cookies = await context.cookies()
+
+		return cookies.some(c => c.name === 'sessionid')
 	}
 }

@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { AccountType, BrowserSessionStatus, VideoStatus } from '@prisma/client'
 import { Job } from 'bullmq'
-import fs from 'fs'
+import fs, { existsSync, rmSync } from 'fs'
 import { BrowserContext, chromium } from 'patchright'
 import path from 'path'
 import { AccountsService } from 'src/accounts/accounts.service'
 import { PrismaService } from 'src/prisma/prisma.service'
+import { BrowserService } from './browser.service'
 
 @Injectable()
 export class BrowserLoginService {
@@ -13,7 +14,8 @@ export class BrowserLoginService {
 
 	constructor(
 		private readonly prismaService: PrismaService,
-		private readonly accountsService: AccountsService
+		private readonly accountsService: AccountsService,
+		private readonly browserService: BrowserService
 	) {}
 
 	async login(job: Job<{ sessionId: string; userId: string }>) {
@@ -30,6 +32,7 @@ export class BrowserLoginService {
 		}
 
 		let context: BrowserContext | null = null
+		let shouldDeleteProfileFolder = false
 
 		try {
 			context = await chromium.launchPersistentContext(
@@ -46,8 +49,7 @@ export class BrowserLoginService {
 
 			await page.waitForTimeout(3000)
 
-			let loggedIn = await this.isLoggedIn(context)
-			console.log('Already logged in:', loggedIn)
+			let loggedIn = await this.browserService.isLoggedIn(context)
 
 			if (!loggedIn) {
 				await page.getByRole('link', { name: 'Use QR code' }).click()
@@ -57,8 +59,6 @@ export class BrowserLoginService {
 				})
 
 				const qr = await page.locator('canvas')
-
-				console.log('count:', await qr.count())
 
 				await qr.screenshot({
 					path: `tmp/${sessionId}.png`
@@ -80,13 +80,6 @@ export class BrowserLoginService {
 			}
 
 			if (loggedIn) {
-				await this.prismaService.browserSession.update({
-					where: { id: sessionId },
-					data: {
-						status: BrowserSessionStatus.CONNECTED
-					}
-				})
-
 				const profileBtn = await page.getByRole('listitem', { name: 'Profile' })
 				await profileBtn.waitFor({ state: 'visible', timeout: 12000 })
 				await profileBtn.click()
@@ -102,12 +95,42 @@ export class BrowserLoginService {
 						.first()
 						.textContent()) || ''
 
+				const secuid = await this.browserService.getTikTokSecuid(context)
+
+				if (session.account.secuid && session.account.secuid !== secuid) {
+					const expectedAccount =
+						session.account.profilePath ||
+						session.account.username ||
+						'исходный аккаунт'
+					const errorMsg = `Вы подключаете аккаунт ${profilePath}, а система ожидает ${expectedAccount}`
+
+					this.logger.warn(`[Create Browser] ${errorMsg}`)
+
+					await context.clearCookies().catch(() => {})
+					shouldDeleteProfileFolder = true
+
+					await this.prismaService.browserSession.update({
+						where: { id: sessionId },
+						data: { status: BrowserSessionStatus.FAILED }
+					})
+
+					return
+				}
+
+				await this.prismaService.browserSession.update({
+					where: { id: sessionId },
+					data: {
+						status: BrowserSessionStatus.CONNECTED
+					}
+				})
+
 				await this.accountsService.update(
 					session.accountId,
 					{
 						connected: true,
 						profilePath,
-						username
+						username,
+						secuid
 					},
 					userId
 				)
@@ -138,13 +161,15 @@ export class BrowserLoginService {
 				await context.close().catch(() => {})
 				this.logger.log(`[Upload] Браузер закрыт.`)
 			}
+
+			if (shouldDeleteProfileFolder) {
+				const profilePathFolder = path.resolve(`profiles/${session.accountId}`)
+				if (existsSync(profilePathFolder)) {
+					rmSync(profilePathFolder, { recursive: true, force: true })
+					this.logger.log(`[Upload] Неверный профиль удален с диска.`)
+				}
+			}
 		}
-	}
-
-	async isLoggedIn(context: BrowserContext) {
-		const cookies = await context.cookies()
-
-		return cookies.some(c => c.name === 'sessionid')
 	}
 
 	private async waitForLogin(
@@ -161,7 +186,7 @@ export class BrowserLoginService {
 					return false
 				}
 
-				const loggedIn = await this.isLoggedIn(context)
+				const loggedIn = await this.browserService.isLoggedIn(context)
 				console.log(loggedIn)
 
 				if (loggedIn) {
