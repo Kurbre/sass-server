@@ -26,6 +26,7 @@ model Account {
   connected Boolean @default(false)
 
   sessions BrowserSession[]
+  videos Video[]
 
   secuid String?
 
@@ -68,6 +69,9 @@ model Video {
 
   status VideoStatus
 
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
   scheduledAt DateTime?
 
   userId String
@@ -81,7 +85,7 @@ enum AccountType {
 }
 
 enum VideoStatus {
-  PEDNING
+  PENDING
   UPLOADING
   FAILED
   SCHEDULED

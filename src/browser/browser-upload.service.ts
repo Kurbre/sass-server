@@ -31,9 +31,16 @@ export class BrowserUploadService {
 				throw new BadRequestException(`Файл не найден на сервере: ${filePath}`)
 			}
 
+			await this.prismaService.video.update({
+				where: { id: video.id },
+				data: {
+					status: VideoStatus.UPLOADING
+				}
+			})
+
 			// 2. Запуск браузера
 			context = await chromium.launchPersistentContext(
-				`profiles/${video.userId}`,
+				`profiles/${video.accountId}`,
 				{
 					headless: false,
 					executablePath: '/usr/bin/google-chrome',
@@ -144,6 +151,11 @@ export class BrowserUploadService {
 				where: { id: video.id },
 				data: { status: VideoStatus.POSTED }
 			})
+
+			if (existsSync(filePath)) {
+				unlinkSync(filePath)
+				this.logger.log(`[Upload] Временный файл удален.`)
+			}
 		} catch (error) {
 			if (error instanceof Error)
 				this.logger.error(
@@ -160,10 +172,6 @@ export class BrowserUploadService {
 			if (context) {
 				await context.close().catch(() => {})
 				this.logger.log(`[Upload] Браузер закрыт.`)
-			}
-			if (filePath && existsSync(filePath)) {
-				unlinkSync(filePath)
-				this.logger.log(`[Upload] Временный файл удален.`)
 			}
 		}
 	}

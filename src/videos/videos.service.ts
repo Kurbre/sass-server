@@ -34,40 +34,45 @@ export class VideosService {
 		}
 
 		const safeDescription = dto.description?.trim() || ''
-		const targetTime = dayjs.tz(
-			dto.scheduledTime,
-			'DD.MM.YYYY HH:mm',
-			'Europe/Kyiv'
-		)
+		let targetTime: dayjs.Dayjs | null = null
+		let delay = 0
 
-		const currentTime = dayjs() // Текущее время
-		const delay = targetTime.diff(currentTime)
+		if (dto.scheduledTime) {
+			targetTime = dayjs.tz(
+				dto.scheduledTime,
+				'DD.MM.YYYY HH:mm',
+				'Europe/Kyiv'
+			)
+
+			if (!targetTime.isValid()) {
+				throw new BadRequestException(
+					'Неверный формат даты. Используйте DD.MM.YYYY HH:mm'
+				)
+			}
+
+			const currentTime = dayjs().tz('Europe/Kyiv')
+			delay = targetTime.diff(currentTime)
+		}
+
+		const isScheduled = delay > 0
+		const status = isScheduled ? VideoStatus.SCHEDULED : VideoStatus.PENDING
 
 		const video = await this.prismaService.video.create({
 			data: {
 				description: safeDescription,
-				scheduledAt: targetTime.toDate(),
+				scheduledAt: targetTime ? targetTime.toDate() : null,
 				userId,
 				file: file.path,
-				status: VideoStatus.PEDNING
+				status,
+				accountId: dto.accountId
 			}
 		})
 
-		if (delay > 0) {
-			await this.queue.add(
-				'uploaded',
-				{
-					videoId: video.id
-				},
-				{ delay }
-			)
-
-			return video
-		}
-
-		await this.queue.add('uploaded', {
-			videoId: video.id
-		})
+		await this.queue.add(
+			'uploaded',
+			{ videoId: video.id },
+			isScheduled ? { delay } : undefined
+		)
 
 		return video
 	}
