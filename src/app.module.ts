@@ -1,19 +1,17 @@
+import { BullModule } from '@nestjs/bullmq'
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { PrismaModule } from './prisma/prisma.module'
-import { UsersModule } from './users/users.module'
-import { BullModule } from '@nestjs/bullmq'
-import { AuthModule } from './auth/auth.module'
-import { JwtModule } from '@nestjs/jwt'
-import { jwtConfig } from './config/jwt.config'
-import { bullModuleConfig } from './config/bull-module.config'
-import { RedisModule } from './redis/redis.module'
-import { AccountsModule } from './accounts/accounts.module'
-import { BrowserModule } from './browser/browser.module'
 import { ServeStaticModule } from '@nestjs/serve-static'
 import { join } from 'path'
+import { AccountsModule } from './accounts/accounts.module'
+import { AuthModule } from './auth/auth.module'
+import { BrowserModule } from './browser/browser.module'
+import { bullModuleConfig } from './config/bull-module.config'
+import { PrismaModule } from './prisma/prisma.module'
+import { RedisModule } from './redis/redis.module'
+import { UsersModule } from './users/users.module'
 import { VideosModule } from './videos/videos.module'
-import appRoot from 'app-root-path'
+import { EventsModule } from './events/events.module';
 
 @Module({
 	imports: [
@@ -34,7 +32,8 @@ import appRoot from 'app-root-path'
 		RedisModule,
 		AccountsModule,
 		BrowserModule,
-		VideosModule
+		VideosModule,
+		EventsModule
 	],
 	controllers: [],
 	providers: []

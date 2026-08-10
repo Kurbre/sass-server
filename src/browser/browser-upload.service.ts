@@ -4,6 +4,7 @@ import { Job } from 'bullmq'
 import { existsSync, unlinkSync } from 'fs'
 import { chromium } from 'patchright'
 import { resolve } from 'path'
+import { EventsGateway } from 'src/events/events.gateway'
 import { PrismaService } from 'src/prisma/prisma.service'
 import { VideosService } from 'src/videos/videos.service'
 
@@ -13,7 +14,8 @@ export class BrowserUploadService {
 
 	constructor(
 		private readonly prismaService: PrismaService,
-		private readonly videosService: VideosService
+		private readonly videosService: VideosService,
+		private readonly eventsGateway: EventsGateway
 	) {}
 
 	async uploadVideo(job: Job<{ videoId: string }>) {
@@ -31,12 +33,12 @@ export class BrowserUploadService {
 				throw new BadRequestException(`Файл не найден на сервере: ${filePath}`)
 			}
 
-			await this.prismaService.video.update({
-				where: { id: video.id },
-				data: {
-					status: VideoStatus.UPLOADING
-				}
-			})
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				10,
+				'Запуск браузера...'
+			)
 
 			// 2. Запуск браузера
 			context = await chromium.launchPersistentContext(
@@ -70,15 +72,36 @@ export class BrowserUploadService {
 				}
 			)
 
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				25,
+				'Переход в TikTok Studio...'
+			)
+
 			await page.goto(
 				'https://www.tiktok.com/tiktokstudio/upload?from=webapp',
 				{ waitUntil: 'domcontentloaded' }
+			)
+
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				40,
+				'Передача файла в инпут...'
 			)
 
 			// 3. Загрузка файла (увеличен таймаут до 30 секунд для медленных серверов)
 			const fileInput = page.locator('input[type="file"]')
 			await fileInput.waitFor({ state: 'attached', timeout: 30000 })
 			await fileInput.setInputFiles(filePath)
+
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				55,
+				'Обработка видео сайтом TikTok...'
+			)
 
 			this.logger.log(`[Upload] Файл передан в браузер, ждем загрузки...`)
 
@@ -87,6 +110,13 @@ export class BrowserUploadService {
 			await editor.waitFor({ state: 'visible', timeout: 120000 })
 
 			this.logger.log(`[Upload] Видео загружено, заполняем данные...`)
+
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				70,
+				'Заполнение описания...'
+			)
 
 			// 5. Ввод описания
 			await editor.click()
@@ -99,6 +129,14 @@ export class BrowserUploadService {
 
 			// 6. Публикация
 			// Используем exact: true, чтобы не задеть другие элементы со словом Post
+
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				85,
+				'Публикация видео...'
+			)
+
 			const postBtn = page
 				.getByRole('button', { name: 'Post', exact: true })
 				.last()
@@ -112,6 +150,13 @@ export class BrowserUploadService {
 			// TikTok часто показывает его сразу после клика "Post"
 			try {
 				this.logger.log(`[Upload] Проверяем модалку подтверждения...`)
+
+				await this.updateVideoState(
+					videoId,
+					VideoStatus.UPLOADING,
+					90,
+					'Подтверждение досрочной публикации...'
+				)
 
 				// Добавили 'Post now' в регулярное выражение поиска кнопки
 				const confirmBtn = page
@@ -134,6 +179,13 @@ export class BrowserUploadService {
 				)
 			}
 
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.UPLOADING,
+				95,
+				'Ожидание подтверждения от сервера TikTok...'
+			)
+
 			// 8. Ожидание финального успеха
 			this.logger.log(`[Upload] Ждем сообщения об успешной публикации...`)
 
@@ -145,27 +197,33 @@ export class BrowserUploadService {
 
 			await successMessage.waitFor({ state: 'visible', timeout: 60000 })
 
-			this.logger.log(`[Upload] Успех! Видео ${videoId} опубликовано.`)
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.POSTED,
+				100,
+				'Видео успешно опубликовано!'
+			)
 
-			await this.prismaService.video.update({
-				where: { id: video.id },
-				data: { status: VideoStatus.POSTED }
-			})
+			this.logger.log(`[Upload] Успех! Видео ${videoId} опубликовано.`)
 
 			if (existsSync(filePath)) {
 				unlinkSync(filePath)
 				this.logger.log(`[Upload] Временный файл удален.`)
 			}
 		} catch (error) {
-			if (error instanceof Error)
-				this.logger.error(
-					`[Upload] Ошибка при публикации видео ${videoId}: ${error.message}`
-				)
+			const errorMessage =
+				error instanceof Error ? error.message : 'Неизвестная ошибка'
 
-			await this.prismaService.video.update({
-				where: { id: video.id },
-				data: { status: VideoStatus.FAILED }
-			})
+			this.logger.error(
+				`[Upload] Ошибка при публикации видео ${videoId}: ${errorMessage}`
+			)
+
+			await this.updateVideoState(
+				videoId,
+				VideoStatus.FAILED,
+				0,
+				`Ошибка: ${errorMessage}`
+			)
 
 			throw error
 		} finally {
@@ -174,5 +232,27 @@ export class BrowserUploadService {
 				this.logger.log(`[Upload] Браузер закрыт.`)
 			}
 		}
+	}
+
+	private async updateVideoState(
+		videoId: string,
+		status: VideoStatus,
+		progress: number,
+		message: string
+	) {
+		// Обновляем статус в базе данных
+		await this.prismaService.video.update({
+			where: { id: videoId },
+			data: { status }
+		})
+
+		// Отправляем событие изменения статуса через веб-сокет
+		this.eventsGateway.emitToVideo(videoId, 'video:status_changed', {
+			videoId,
+			status,
+			progress,
+			message,
+			timestamp: new Date().toISOString()
+		})
 	}
 }

@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { AccountType, BrowserSessionStatus, VideoStatus } from '@prisma/client'
 import { Job } from 'bullmq'
-import fs, { existsSync, rmSync } from 'fs'
+import fs, { existsSync, mkdirSync, rmSync } from 'fs'
 import { BrowserContext, chromium } from 'patchright'
 import path from 'path'
 import { AccountsService } from 'src/accounts/accounts.service'
 import { PrismaService } from 'src/prisma/prisma.service'
 import { BrowserService } from './browser.service'
+import { EventsGateway } from 'src/events/events.gateway'
 
 @Injectable()
 export class BrowserLoginService {
@@ -15,7 +16,8 @@ export class BrowserLoginService {
 	constructor(
 		private readonly prismaService: PrismaService,
 		private readonly accountsService: AccountsService,
-		private readonly browserService: BrowserService
+		private readonly browserService: BrowserService,
+		private readonly eventsGateway: EventsGateway
 	) {}
 
 	async login(job: Job<{ sessionId: string; userId: string }>) {
@@ -58,11 +60,26 @@ export class BrowserLoginService {
 					state: 'visible'
 				})
 
+				const tmpDir = path.resolve('tmp')
+				if (!existsSync(tmpDir)) {
+					mkdirSync(tmpDir, { recursive: true })
+				}
+
 				const qr = await page.locator('canvas')
 
 				await qr.screenshot({
 					path: `tmp/${sessionId}.png`
 				})
+
+				await this.eventsGateway.emitToUser(
+					session.account.userId,
+					'tiktokAuthQr',
+					{
+						fileName: `${sessionId}.png`,
+						sessionId: session.id,
+						accountId: session.accountId
+					}
+				)
 
 				await this.prismaService.browserSession.update({
 					where: { id: sessionId },
@@ -80,6 +97,18 @@ export class BrowserLoginService {
 			}
 
 			if (loggedIn) {
+				await this.eventsGateway.emitToUser(
+					session.account.userId,
+					'tiktokAuth',
+					{
+						message: `Вы успешно вошли в tiktok аккаунт, идет збор информации.`,
+						isLogin: true,
+						isError: false,
+						sessionId: session.id,
+						accountId: session.accountId
+					}
+				)
+
 				const profileBtn = await page.getByRole('listitem', { name: 'Profile' })
 				await profileBtn.waitFor({ state: 'visible', timeout: 12000 })
 				await profileBtn.click()
@@ -104,6 +133,17 @@ export class BrowserLoginService {
 						'исходный аккаунт'
 					const errorMsg = `Вы подключаете аккаунт ${profilePath}, а система ожидает ${expectedAccount}`
 
+					await this.eventsGateway.emitToUser(
+						session.account.userId,
+						'tiktokAuth',
+						{
+							message: errorMsg,
+							isLogin: true,
+							isError: true,
+							sessionId: session.id,
+							accountId: session.accountId
+						}
+					)
 					this.logger.warn(`[Create Browser] ${errorMsg}`)
 
 					await context.clearCookies().catch(() => {})
@@ -146,13 +186,23 @@ export class BrowserLoginService {
 				})
 			}
 		} catch (error) {
-			this.logger.error(
-				`[Create Browser] Ошибка: ${error instanceof Error ? error.message : error}`
-			)
+			const errorText = error instanceof Error ? error.message : String(error)
+			this.logger.error(`[Create Browser] Ошибка: ${errorText}`)
+
+			if (session?.account?.userId) {
+				this.eventsGateway.emitToUser(session.account.userId, 'tiktokAuth', {
+					message: errorText || 'Ошибка авторизации',
+					isLogin: false,
+					isError: true,
+					sessionId: session.id,
+					accountId: session.accountId
+				})
+			}
+
 			await this.prismaService.browserSession
 				.update({
 					where: { id: sessionId },
-					data: { status: BrowserSessionStatus.EXPIRED }
+					data: { status: BrowserSessionStatus.FAILED }
 				})
 				.catch(() => {})
 			throw error

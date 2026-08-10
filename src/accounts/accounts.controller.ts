@@ -24,15 +24,6 @@ export class AccountsController {
 	}
 
 	@Auth()
-	@Post('connect/tiktok/qr/:sessionId')
-	getQRTiktok(
-		@GetAuthUser('id') userId: string,
-		@Param('sessionId') sessionId: string
-	) {
-		return this.accountsService.findSessionById(sessionId, userId)
-	}
-
-	@Auth()
 	@Post(':id/logout/tiktok')
 	logout(@GetAuthUser('id') userId: string, @Param('id') id: string) {
 		return this.accountsService.logout(id, userId)
