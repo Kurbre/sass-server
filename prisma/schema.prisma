@@ -25,22 +25,36 @@ model Account {
   type AccountType
   connected Boolean @default(false)
 
-  username String
-  profilePath String
+  sessions BrowserSession[]
+
+  username String?
+  profilePath String?
 
   userId String
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([type, username])
+  @@index([userId])
+  @@index([userId, type])
 }
 
-enum AccountType {
-  INSTAGRAM
-  TIKTOK
-  YOUTUBE
+model BrowserSession {
+  id          String @id @default(cuid())
+
+  accountId String 
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  status      BrowserSessionStatus
+
+  qrImagePath String?
+
+  createdAt   DateTime @default(now())
+
+  expiresAt   DateTime
+
+  @@index([accountId])
 }
 
 model Video {
@@ -55,7 +69,13 @@ model Video {
   scheduledAt DateTime?
 
   userId String
-  user User @relation(fields:[userId], references:[id])
+  user User @relation(fields:[userId], references:[id], onDelete: Cascade)
+}
+
+enum AccountType {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
 }
 
 enum VideoStatus {
@@ -64,22 +84,6 @@ enum VideoStatus {
   FAILED
   SCHEDULED
   POSTED
-}
-
-model BrowserSession {
-  id          String @id @default(cuid())
-
-  userId      String
-
-  type AccountType
-
-  status      BrowserSessionStatus
-
-  qrImagePath String?
-
-  createdAt   DateTime @default(now())
-
-  expiresAt   DateTime
 }
 
 enum BrowserSessionStatus {

@@ -1,5 +1,7 @@
 import { InjectQueue } from '@nestjs/bullmq'
 import {
+	BadRequestException,
+	ConflictException,
 	Injectable,
 	NotAcceptableException,
 	NotFoundException
@@ -7,6 +9,8 @@ import {
 import { AccountType, BrowserSessionStatus } from '@prisma/client'
 import { Queue } from 'bullmq'
 import { PrismaService } from 'src/prisma/prisma.service'
+import { CreateAccountDto } from './dto/create-account.dto'
+import { UpdateAccountDto } from './dto/update-account.dto'
 
 @Injectable()
 export class AccountsService {
@@ -21,33 +25,91 @@ export class AccountsService {
 		return { success: true }
 	}
 
-	async connectTiktok(userId: string) {
+	async connectTiktok(accountId: string, userId: string) {
+		const account = await this.findById(accountId, userId)
+
+		if (account.type !== AccountType.TIKTOK) {
+			throw new BadRequestException('Account is not TikTok')
+		}
+
 		const date = new Date()
 		date.setMinutes(date.getMinutes() + 5)
 
-		const session = await this.prismaService.browserSession.create({
-			data: {
-				userId,
-				status: BrowserSessionStatus.CREATING,
-				expiresAt: date,
-				type: AccountType.TIKTOK
+		const existingSession = await this.prismaService.browserSession.findFirst({
+			where: {
+				accountId,
+				status: {
+					in: [
+						BrowserSessionStatus.CREATING,
+						BrowserSessionStatus.WAITING_QR,
+						BrowserSessionStatus.WAITING_LOGIN
+					]
+				}
 			}
 		})
 
-		await this.browserQueue.add('create-browser', { sessionId: session.id })
+		if (existingSession)
+			throw new ConflictException('Account connection is already in progress')
+
+		const session = await this.prismaService.browserSession.create({
+			data: {
+				status: BrowserSessionStatus.CREATING,
+				expiresAt: date,
+				accountId
+			}
+		})
+
+		await this.browserQueue.add('create-browser', {
+			sessionId: session.id,
+			userId
+		})
 
 		return {
 			sessionId: session.id
 		}
 	}
 
+	async create(dto: CreateAccountDto, userId: string) {
+		return this.prismaService.account.create({
+			data: {
+				...dto,
+				userId
+			}
+		})
+	}
+
+	async update(id: string, dto: UpdateAccountDto, userId: string) {
+		await this.findById(id, userId)
+
+		return this.prismaService.account.update({
+			where: { id },
+			data: dto
+		})
+	}
+
+	async findById(id: string, userId: string) {
+		const account = await this.prismaService.account.findUnique({
+			where: { id }
+		})
+		console.log(account)
+		if (!account) throw new NotFoundException('Account not found')
+
+		if (account.userId !== userId)
+			throw new NotAcceptableException('Not access')
+
+		return account
+	}
+
 	async findSessionById(id: string, userId: string) {
 		const session = await this.prismaService.browserSession.findUnique({
-			where: { id }
+			where: { id },
+			include: {
+				account: true
+			}
 		})
 		if (!session) throw new NotFoundException('Sesion not found')
 
-		if (userId !== session.userId)
+		if (session.account.userId !== userId)
 			throw new NotAcceptableException('Not access')
 
 		return session

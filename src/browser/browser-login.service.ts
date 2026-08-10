@@ -1,0 +1,192 @@
+import { Injectable, Logger } from '@nestjs/common'
+import { AccountType, BrowserSessionStatus, VideoStatus } from '@prisma/client'
+import { Job } from 'bullmq'
+import fs from 'fs'
+import { BrowserContext, chromium } from 'patchright'
+import path from 'path'
+import { AccountsService } from 'src/accounts/accounts.service'
+import { PrismaService } from 'src/prisma/prisma.service'
+
+@Injectable()
+export class BrowserLoginService {
+	private readonly logger = new Logger(BrowserLoginService.name)
+
+	constructor(
+		private readonly prismaService: PrismaService,
+		private readonly accountsService: AccountsService
+	) {}
+
+	async login(job: Job<{ sessionId: string; userId: string }>) {
+		const { sessionId, userId } = job.data
+
+		const session = await this.accountsService.findSessionById(
+			sessionId,
+			userId
+		)
+
+		if (!session) {
+			this.logger.error('[Bull MQ - Create Browser] - session not found!')
+			return
+		}
+
+		let context: BrowserContext | null = null
+
+		try {
+			context = await chromium.launchPersistentContext(
+				`profiles/${session.accountId}`,
+				{
+					headless: false,
+					executablePath: '/usr/bin/google-chrome'
+				}
+			)
+
+			const page = await context.newPage()
+
+			await page.goto('https://www.tiktok.com/login')
+
+			await page.waitForTimeout(3000)
+
+			let loggedIn = await this.isLoggedIn(context)
+			console.log('Already logged in:', loggedIn)
+
+			if (!loggedIn) {
+				await page.getByRole('link', { name: 'Use QR code' }).click()
+
+				await page.locator('canvas').waitFor({
+					state: 'visible'
+				})
+
+				const qr = await page.locator('canvas')
+
+				console.log('count:', await qr.count())
+
+				await qr.screenshot({
+					path: `tmp/${sessionId}.png`
+				})
+
+				await this.prismaService.browserSession.update({
+					where: { id: sessionId },
+					data: {
+						qrImagePath: `${sessionId}.png`,
+						status: BrowserSessionStatus.WAITING_QR
+					}
+				})
+
+				loggedIn = await this.waitForLogin(
+					context,
+					session.expiresAt,
+					path.resolve(`tmp/${sessionId}.png`)
+				)
+			}
+
+			if (loggedIn) {
+				await this.prismaService.browserSession.update({
+					where: { id: sessionId },
+					data: {
+						status: BrowserSessionStatus.CONNECTED
+					}
+				})
+
+				const profileBtn = await page.getByRole('listitem', { name: 'Profile' })
+				await profileBtn.waitFor({ state: 'visible', timeout: 12000 })
+				await profileBtn.click()
+
+				const username =
+					(await page
+						.locator('[data-e2e="user-title"]')
+						.first()
+						.textContent()) || ''
+				const profilePath =
+					(await page
+						.locator('[data-e2e="user-subtitle"]')
+						.first()
+						.textContent()) || ''
+
+				await this.accountsService.update(
+					session.accountId,
+					{
+						connected: true,
+						profilePath,
+						username
+					},
+					userId
+				)
+
+				await this.prismaService.browserSession.delete({
+					where: {
+						id: sessionId
+					}
+				})
+			} else {
+				await this.prismaService.browserSession.delete({
+					where: { id: sessionId }
+				})
+			}
+		} catch (error) {
+			this.logger.error(
+				`[Create Browser] Ошибка: ${error instanceof Error ? error.message : error}`
+			)
+			await this.prismaService.browserSession
+				.update({
+					where: { id: sessionId },
+					data: { status: BrowserSessionStatus.EXPIRED }
+				})
+				.catch(() => {})
+			throw error
+		} finally {
+			if (context) {
+				await context.close().catch(() => {})
+				this.logger.log(`[Upload] Браузер закрыт.`)
+			}
+		}
+	}
+
+	async isLoggedIn(context: BrowserContext) {
+		const cookies = await context.cookies()
+
+		return cookies.some(c => c.name === 'sessionid')
+	}
+
+	private async waitForLogin(
+		context: BrowserContext,
+		expiresAt: Date,
+		filePath: string | undefined
+	): Promise<boolean> {
+		const checkIntervalMs = 5000
+
+		try {
+			while (Date.now() < expiresAt.getTime()) {
+				if (context.pages().length === 0) {
+					this.logger.warn('[waitForLogin] Контекст закрыт извне.')
+					return false
+				}
+
+				const loggedIn = await this.isLoggedIn(context)
+				console.log(loggedIn)
+
+				if (loggedIn) {
+					this.logger.log('[waitForLogin] Пользователь успешно авторизовался.')
+
+					return true
+				}
+
+				// Ждем 5 секунд перед следующей проверкой
+				await new Promise(resolve => setTimeout(resolve, checkIntervalMs))
+			}
+		} catch (e) {
+			this.logger.error(
+				'Контекст браузера был закрыт до завершения авторизации.'
+			)
+
+			return false
+		} finally {
+			if (filePath && fs.existsSync(filePath)) {
+				fs.unlinkSync(filePath)
+				this.logger.log(`[Upload] Временный файл удален.`)
+			}
+		}
+
+		this.logger.warn('[waitForLogin] Истекло время ожидания входа (5 минут).')
+		return false
+	}
+}

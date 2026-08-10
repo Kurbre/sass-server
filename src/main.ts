@@ -24,8 +24,6 @@ async function bootstrap() {
 		})
 	)
 
-	console.log(process.cwd())
-
 	await app.listen(config.get('PORT') ?? 3000)
 }
 bootstrap()

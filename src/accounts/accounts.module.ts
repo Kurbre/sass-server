@@ -10,6 +10,7 @@ import { BullModule } from '@nestjs/bullmq'
 		BullModule.registerQueue({
 			name: 'browser'
 		})
-	]
+	],
+	exports: [AccountsService]
 })
 export class AccountsModule {}

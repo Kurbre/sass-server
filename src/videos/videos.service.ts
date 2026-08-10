@@ -43,16 +43,12 @@ export class VideosService {
 		const currentTime = dayjs() // Текущее время
 		const delay = targetTime.diff(currentTime)
 
-		console.log(`Запланировано на: ${targetTime.format()}`)
-		console.log(`Текущее время сервера: ${currentTime.format()}`)
-		console.log(`Delay: ${delay} мс`)
-
 		const video = await this.prismaService.video.create({
 			data: {
 				description: safeDescription,
 				scheduledAt: targetTime.toDate(),
 				userId,
-				file: 'https://res.cloudinary.com/dwbzak6xg/video/upload/v1785614496/nestjs_uploads/j3sdrs6pvwbqdhlxjn7f.mp4',
+				file: file.path,
 				status: VideoStatus.PEDNING
 			}
 		})
