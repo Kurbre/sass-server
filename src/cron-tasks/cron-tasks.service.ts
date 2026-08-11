@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { Account } from '@prisma/client'
+import { Cron, CronExpression } from '@nestjs/schedule'
+import { Account, Video, VideoStatus } from '@prisma/client'
 import { BrowserContext, chromium } from 'patchright'
 import { BrowserService } from 'src/browser/browser.service'
 import { EventsGateway } from 'src/events/events.gateway'
@@ -17,6 +18,7 @@ export class CronTasksService {
 		private readonly eventsGateway: EventsGateway
 	) {}
 
+	@Cron(CronExpression.EVERY_30_MINUTES)
 	async checkAccountSessions() {
 		if (this.isAccountChecking) {
 			this.logger.warn('[Cron] Проверка аккаунтов уже выполняется, пропуск...')
@@ -61,6 +63,7 @@ export class CronTasksService {
 			)
 
 			const isLoggedIn = await this.browserService.isLoggedIn(context)
+			console.log(account.profilePath, isLoggedIn)
 
 			if (!isLoggedIn) {
 				this.logger.warn(
@@ -91,6 +94,98 @@ export class CronTasksService {
 			if (context) {
 				await context.close().catch(() => {})
 			}
+		}
+	}
+
+	@Cron(CronExpression.EVERY_10_MINUTES)
+	async checkVideoStatus() {
+		if (this.isVideoChecking) {
+			this.logger.warn('[Cron] Проверка видео уже выполняется, пропуск...')
+			return
+		}
+
+		this.isVideoChecking = true
+		this.logger.log('[Cron] Старт проверки опубликованных видео по ссылкам...')
+
+		try {
+			// Выбираем ТОЛЬКО видео, у которых ЕСТЬ ссылка (not: null) и статус POSTED
+			const videos = await this.prismaService.video.findMany({
+				where: {
+					tiktokVideoUrl: {
+						not: null
+					},
+					status: VideoStatus.POSTED
+				},
+				include: {
+					account: true
+				},
+				take: 20
+			})
+
+			if (videos.length === 0) {
+				this.logger.log('[Cron] Нет видео с ссылками для проверки.')
+				return
+			}
+
+			this.logger.log(
+				`[Cron] Найдено видео с ссылками для проверки: ${videos.length}`
+			)
+
+			for (const video of videos) {
+				await this.verifySingleVideoLink(video)
+			}
+		} catch (error) {
+			this.logger.error('[Cron] Ошибка проверки видео по ссылкам:', error)
+		} finally {
+			this.isVideoChecking = false
+			this.logger.log('[Cron] Проверка видео завершена.')
+		}
+	}
+
+	private async verifySingleVideoLink(video: Video & { account: Account }) {
+		if (!video.tiktokVideoUrl) return
+
+		try {
+			// Используем публичный oEmbed API TikTok для точной проверки
+			const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(video.tiktokVideoUrl)}`
+
+			const response = await fetch(oembedUrl, {
+				method: 'GET',
+				headers: {
+					'User-Agent':
+						'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+				}
+			})
+
+			// Если статус НЕ 200 OK (oEmbed возвращает 400 или 404, если видео удалено или скрыто)
+			if (!response.ok) {
+				this.logger.warn(
+					`[Cron] Видео ${video.id} недоступно по oEmbed (HTTP ${response.status}). Помечаем как FAILED.`
+				)
+
+				await this.prismaService.video.update({
+					where: { id: video.id },
+					data: {
+						status: VideoStatus.FAILED,
+						errorMessage: 'Видео было удалено или недоступно в TikTok'
+					}
+				})
+
+				this.eventsGateway.emitToUser(video.userId, 'videoStatus', {
+					videoId: video.id,
+					status: VideoStatus.FAILED,
+					message: `Видео по ссылке ${video.tiktokVideoUrl} недоступно или было удалено.`
+				})
+			} else {
+				this.logger.log(
+					`[Cron] Видео ${video.id} доступно (подтверждено через oEmbed).`
+				)
+			}
+		} catch (error) {
+			this.logger.error(
+				`[Cron] Не удалось проверить ссылку видео ${video.id}:`,
+				error
+			)
 		}
 	}
 }

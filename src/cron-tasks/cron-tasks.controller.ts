@@ -1,7 +1,17 @@
-import { Controller } from '@nestjs/common';
-import { CronTasksService } from './cron-tasks.service';
+import { Controller, Get } from '@nestjs/common'
+import { CronTasksService } from './cron-tasks.service'
 
 @Controller('cron-tasks')
 export class CronTasksController {
-  constructor(private readonly cronTasksService: CronTasksService) {}
+	constructor(private readonly cronTasksService: CronTasksService) {}
+
+	@Get('accounts-health')
+	checkAccountsHealth() {
+		return this.cronTasksService.checkAccountSessions()
+	}
+
+	@Get('videos-health')
+	checkVideosHealth() {
+		return this.cronTasksService.checkVideoStatus()
+	}
 }

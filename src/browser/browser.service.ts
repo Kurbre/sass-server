@@ -148,8 +148,47 @@ export class BrowserService {
 	}
 
 	async isLoggedIn(context: BrowserContext) {
-		const cookies = await context.cookies()
+		try {
+			if (!context || !context.browser()?.isConnected()) {
+				return false
+			}
 
-		return cookies.some(c => c.name === 'sessionid')
+			// 1. Быстрая локальная проверка наличия куки
+			const cookies = await context.cookies()
+			const hasSessionCookie = cookies.some(
+				c => c.name === 'sessionid' && c.value
+			)
+
+			if (!hasSessionCookie) {
+				return false
+			}
+
+			// 2. Реальная проверка актуальности сессии через API TikTok
+			const response = await context.request.get(
+				'https://www.tiktok.com/passport/web/account/info/',
+				{ timeout: 5000 }
+			)
+
+			if (!response.ok()) {
+				return false
+			}
+
+			const json = await response.json()
+
+			// У разлогиненного аккаунта data будет пустым или не содержит user_id/sec_user_id
+			const isAuthorized = Boolean(
+				json?.data?.user_id || json?.data?.sec_user_id
+			)
+
+			return isAuthorized
+		} catch (error) {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error)
+
+			if (!errorMessage.includes('closed')) {
+				this.logger.warn(`[isLoggedIn] Ошибка проверки сессии: ${errorMessage}`)
+			}
+			return false
+		}
 	}
 }
