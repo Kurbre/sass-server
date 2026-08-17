@@ -13,6 +13,7 @@ import { UsersModule } from './users/users.module'
 import { VideosModule } from './videos/videos.module'
 import { EventsModule } from './events/events.module';
 import { CronTasksModule } from './cron-tasks/cron-tasks.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
 	imports: [
@@ -35,7 +36,8 @@ import { CronTasksModule } from './cron-tasks/cron-tasks.module';
 		BrowserModule,
 		VideosModule,
 		EventsModule,
-		CronTasksModule
+		CronTasksModule,
+		NotificationsModule
 	],
 	controllers: [],
 	providers: []

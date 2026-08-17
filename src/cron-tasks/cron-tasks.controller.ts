@@ -4,14 +4,4 @@ import { CronTasksService } from './cron-tasks.service'
 @Controller('cron-tasks')
 export class CronTasksController {
 	constructor(private readonly cronTasksService: CronTasksService) {}
-
-	@Get('accounts-health')
-	checkAccountsHealth() {
-		return this.cronTasksService.checkAccountSessions()
-	}
-
-	@Get('videos-health')
-	checkVideosHealth() {
-		return this.cronTasksService.checkVideoStatus()
-	}
 }
