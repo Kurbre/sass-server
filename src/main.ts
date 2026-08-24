@@ -3,6 +3,7 @@ import { AppModule } from './app.module'
 import { ConfigService } from '@nestjs/config'
 import { ValidationPipe } from '@nestjs/common'
 import cookieParser from 'cookie-parser'
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule)
@@ -23,6 +24,14 @@ async function bootstrap() {
 			whitelist: true
 		})
 	)
+
+	const configSwagger = new DocumentBuilder()
+		.setTitle('Saas platofrm')
+		.setDescription('The saas platofrm API description')
+		.setVersion('1.0')
+		.build()
+	const documentFactory = () => SwaggerModule.createDocument(app, configSwagger)
+	SwaggerModule.setup('docs', app, documentFactory)
 
 	await app.listen(config.get('PORT') ?? 3000)
 }

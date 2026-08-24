@@ -28,7 +28,8 @@ export class UsersService {
 			where: { id },
 			include: {
 				accounts: true,
-				videos: true
+				videos: true,
+				notifications: true
 			}
 		})
 		if (!user) throw new NotFoundException('User not found.')

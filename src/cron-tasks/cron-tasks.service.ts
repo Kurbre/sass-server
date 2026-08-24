@@ -108,13 +108,18 @@ export class CronTasksService {
 		this.logger.log('[Cron] Старт проверки опубликованных видео по ссылкам...')
 
 		try {
+			const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000)
+
 			// Выбираем ТОЛЬКО видео, у которых ЕСТЬ ссылка (not: null) и статус POSTED
 			const videos = await this.prismaService.video.findMany({
 				where: {
 					tiktokVideoUrl: {
 						not: null
 					},
-					status: VideoStatus.POSTED
+					status: VideoStatus.POSTED,
+					createdAt: {
+						lte: fifteenMinutesAgo
+					}
 				},
 				include: {
 					account: true
