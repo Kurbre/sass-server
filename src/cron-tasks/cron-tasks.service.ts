@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { Account, Video, VideoStatus } from '@prisma/client'
 import { BrowserContext, chromium } from 'patchright'
-import { BrowserService } from 'src/browser/browser.service'
+import { TiktokService } from 'src/tiktok/tiktok.service'
 import { EventsGateway } from 'src/events/events.gateway'
 import { PrismaService } from 'src/prisma/prisma.service'
 
@@ -14,7 +14,7 @@ export class CronTasksService {
 
 	constructor(
 		private readonly prismaService: PrismaService,
-		private readonly browserService: BrowserService,
+		private readonly tiktokService: TiktokService,
 		private readonly eventsGateway: EventsGateway
 	) {}
 
@@ -62,7 +62,7 @@ export class CronTasksService {
 				}
 			)
 
-			const isLoggedIn = await this.browserService.isLoggedIn(context)
+			const isLoggedIn = await this.tiktokService.isLoggedIn(context)
 			console.log(account.profilePath, isLoggedIn)
 
 			if (!isLoggedIn) {

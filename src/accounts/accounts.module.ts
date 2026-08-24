@@ -8,7 +8,7 @@ import { BullModule } from '@nestjs/bullmq'
 	providers: [AccountsService],
 	imports: [
 		BullModule.registerQueue({
-			name: 'browser'
+			name: 'tiktok'
 		})
 	],
 	exports: [AccountsService]

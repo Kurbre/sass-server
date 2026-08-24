@@ -1,10 +1,10 @@
 import { Controller, Get, Param } from '@nestjs/common'
-import { BrowserService } from './browser.service'
+import { TiktokService } from './tiktok.service'
 import { chromium } from 'patchright'
 
-@Controller('browser')
-export class BrowserController {
-	constructor(private readonly browserService: BrowserService) {}
+@Controller('tiktok')
+export class TiktokController {
+	constructor(private readonly tiktokService: TiktokService) {}
 
 	@Get(':id')
 	async launchBrowser(@Param('id') id: string) {

@@ -3,12 +3,12 @@ import { Job } from 'bullmq'
 import { existsSync, rmSync } from 'fs'
 import { BrowserContext, chromium, Page } from 'patchright'
 import path from 'path'
-import { BrowserLoginService } from './browser-login.service'
+import { TiktokLoginService } from './tiktok-login.service'
 import { AccountsService } from 'src/accounts/accounts.service'
 
 @Injectable()
-export class BrowserService {
-	private readonly logger = new Logger(BrowserService.name)
+export class TiktokService {
+	private readonly logger = new Logger(TiktokService.name)
 
 	constructor(private readonly accountsService: AccountsService) {}
 

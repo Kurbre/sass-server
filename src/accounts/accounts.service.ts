@@ -16,13 +16,13 @@ import { UpdateAccountDto } from './dto/update-account.dto'
 export class AccountsService {
 	constructor(
 		private readonly prismaService: PrismaService,
-		@InjectQueue('browser') private readonly browserQueue: Queue
+		@InjectQueue('tiktok') private readonly tiktokQueue: Queue
 	) {}
 
 	async logout(accountId: string, userId: string) {
 		await this.findById(accountId, userId)
 
-		await this.browserQueue.add('logout', { accountId, userId })
+		await this.tiktokQueue.add('logout', { accountId, userId })
 
 		return { success: true }
 	}
@@ -61,7 +61,7 @@ export class AccountsService {
 			}
 		})
 
-		await this.browserQueue.add('create-browser', {
+		await this.tiktokQueue.add('login', {
 			sessionId: session.id,
 			userId
 		})

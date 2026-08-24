@@ -6,17 +6,17 @@ import { BrowserContext, chromium } from 'patchright'
 import path from 'path'
 import { AccountsService } from 'src/accounts/accounts.service'
 import { PrismaService } from 'src/prisma/prisma.service'
-import { BrowserService } from './browser.service'
+import { TiktokService } from './tiktok.service'
 import { EventsGateway } from 'src/events/events.gateway'
 
 @Injectable()
-export class BrowserLoginService {
-	private readonly logger = new Logger(BrowserLoginService.name)
+export class TiktokLoginService {
+	private readonly logger = new Logger(TiktokLoginService.name)
 
 	constructor(
 		private readonly prismaService: PrismaService,
 		private readonly accountsService: AccountsService,
-		private readonly browserService: BrowserService,
+		private readonly tiktokService: TiktokService,
 		private readonly eventsGateway: EventsGateway
 	) {}
 
@@ -51,7 +51,7 @@ export class BrowserLoginService {
 
 			await page.waitForTimeout(3000)
 
-			let loggedIn = await this.browserService.isLoggedIn(context)
+			let loggedIn = await this.tiktokService.isLoggedIn(context)
 
 			if (!loggedIn) {
 				await page.getByRole('link', { name: 'Use QR code' }).click()
@@ -124,7 +124,7 @@ export class BrowserLoginService {
 						.first()
 						.textContent()) || ''
 
-				const secuid = await this.browserService.getTikTokSecuid(context)
+				const secuid = await this.tiktokService.getTikTokSecuid(context)
 
 				if (session.account.secuid && session.account.secuid !== secuid) {
 					const expectedAccount =
@@ -284,7 +284,7 @@ export class BrowserLoginService {
 					return false
 				}
 
-				const loggedIn = await this.browserService.isLoggedIn(context)
+				const loggedIn = await this.tiktokService.isLoggedIn(context)
 				console.log(loggedIn)
 
 				if (loggedIn) {

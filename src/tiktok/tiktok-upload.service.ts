@@ -9,8 +9,8 @@ import { PrismaService } from 'src/prisma/prisma.service'
 import { VideosService } from 'src/videos/videos.service'
 
 @Injectable()
-export class BrowserUploadService {
-	private logger = new Logger(BrowserUploadService.name)
+export class TiktokUploadService {
+	private logger = new Logger(TiktokUploadService.name)
 
 	constructor(
 		private readonly prismaService: PrismaService,
