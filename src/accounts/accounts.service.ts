@@ -127,4 +127,21 @@ export class AccountsService {
 
 		return session
 	}
+
+	async delete(accountId: string, userId: string) {
+		const account = await this.findById(accountId, userId)
+
+		if (account.connected)
+			throw new BadRequestException('First, log out of your account.')
+
+		await this.prismaService.account.delete({
+			where: {
+				id: accountId
+			}
+		})
+
+		return {
+			success: true
+		}
+	}
 }

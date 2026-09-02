@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common'
 import { AccountsService } from './accounts.service'
 import { Auth } from 'src/auth/decorators/auth.decorator'
 import { GetAuthUser } from 'src/users/decorators/users.decorator'
@@ -33,5 +33,11 @@ export class AccountsController {
 	@Post(':id/logout/tiktok')
 	logout(@GetAuthUser('id') userId: string, @Param('id') id: string) {
 		return this.accountsService.logout(id, userId)
+	}
+
+	@Auth()
+	@Delete(':id')
+	delete(@Param('id') id: string, @GetAuthUser('id') userId: string) {
+		return this.accountsService.delete(id, userId)
 	}
 }
