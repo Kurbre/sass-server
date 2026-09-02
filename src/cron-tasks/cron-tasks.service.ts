@@ -18,7 +18,7 @@ export class CronTasksService {
 		private readonly eventsGateway: EventsGateway
 	) {}
 
-	@Cron(CronExpression.EVERY_30_MINUTES)
+	// @Cron(CronExpression.EVERY_30_MINUTES)
 	async checkAccountSessions() {
 		if (this.isAccountChecking) {
 			this.logger.warn('[Cron] Проверка аккаунтов уже выполняется, пропуск...')
@@ -97,7 +97,7 @@ export class CronTasksService {
 		}
 	}
 
-	@Cron(CronExpression.EVERY_10_MINUTES)
+	// @Cron(CronExpression.EVERY_10_MINUTES)
 	async checkVideoStatus() {
 		if (this.isVideoChecking) {
 			this.logger.warn('[Cron] Проверка видео уже выполняется, пропуск...')

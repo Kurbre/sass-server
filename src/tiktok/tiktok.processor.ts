@@ -22,5 +22,7 @@ export class TiktokProcessor extends WorkerHost {
 			return this.tiktokUploadService.uploadVideo(job)
 		if (job.name === 'logout') return this.tiktokService.logout(job)
 		if (job.name === 'delete') return this.tiktokDeleteService.delete(job)
+		if (job.name === 'videoBanner')
+			return this.tiktokUploadService.getBannerVideoImage(job)
 	}
 }

@@ -124,6 +124,10 @@ export class TiktokLoginService {
 						.first()
 						.textContent()) || ''
 
+				const avatarPath = await page
+					.locator('[data-e2e="user-avatar"] img')
+					.getAttribute('src')
+
 				const secuid = await this.tiktokService.getTikTokSecuid(context)
 
 				if (session.account.secuid && session.account.secuid !== secuid) {
@@ -206,7 +210,8 @@ export class TiktokLoginService {
 						connected: true,
 						profilePath,
 						username,
-						secuid
+						secuid,
+						avatarPath: avatarPath ?? undefined
 					},
 					userId
 				)

@@ -19,7 +19,14 @@ import { NotificationsModule } from 'src/notifications/notifications.module'
 		TiktokUploadService,
 		TiktokDeleteService
 	],
-	imports: [VideosModule, AccountsModule, NotificationsModule],
+	imports: [
+		VideosModule,
+		AccountsModule,
+		NotificationsModule,
+		BullModule.registerQueue({
+			name: 'tiktok'
+		})
+	],
 	exports: [TiktokService]
 })
 export class TiktokModule {}

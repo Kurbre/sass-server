@@ -22,8 +22,6 @@ dayjs.extend(timezone)
 
 @Injectable()
 export class VideosService {
-	private readonly logger = new Logger(VideosService.name)
-
 	constructor(
 		private readonly prismaService: PrismaService,
 		@InjectQueue('tiktok') private readonly queue: Queue
@@ -79,9 +77,7 @@ export class VideosService {
 	}
 
 	async delete(videoId: string, userId: string) {
-		const video = await this.findById(videoId)
-
-		if (video.userId !== userId) throw new NotAcceptableException('Not access.')
+		await this.findById(videoId, userId)
 
 		await this.queue.add('delete', { videoId })
 
@@ -102,7 +98,7 @@ export class VideosService {
 		})
 	}
 
-	async findById(id: string) {
+	async findById(id: string, userId?: string) {
 		const video = await this.prismaService.video.findUnique({
 			where: { id },
 			include: {
@@ -112,6 +108,43 @@ export class VideosService {
 		})
 		if (!video) throw new NotFoundException('Video not found')
 
+		if (userId)
+			if (video.userId !== userId)
+				throw new NotAcceptableException('Not access.')
+
 		return video
+	}
+
+	async retryUpload(videoId: string, userId: string) {
+		await this.findById(videoId, userId)
+
+		await this.queue.add('uploaded', { videoId }, { attempts: 3 })
+
+		return {
+			success: true,
+			videoId
+		}
+	}
+
+	async cancelSchedule(videoId: string, userId: string) {
+		const video = await this.findById(videoId, userId)
+
+		if (video.status !== VideoStatus.SCHEDULED)
+			throw new BadRequestException('Only a scheduled video can be cancelled.')
+
+		const job = await this.queue.getJob(videoId)
+
+		if (job) await job.remove()
+
+		await this.prismaService.video.update({
+			where: { id: videoId },
+			data: {
+				status: VideoStatus.CANCELED
+			}
+		})
+
+		return {
+			success: true
+		}
 	}
 }

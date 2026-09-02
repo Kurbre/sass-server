@@ -35,6 +35,12 @@ export class VideosController {
 		return this.videosService.findByUserId(userId)
 	}
 
+	@Get(':id')
+	@Auth()
+	findById(@GetAuthUser('id') userId: string, @Param('id') id: string) {
+		return this.videosService.findById(id, userId)
+	}
+
 	@Auth()
 	@Post()
 	@UseInterceptors(
@@ -64,5 +70,17 @@ export class VideosController {
 	@Auth()
 	delete(@Param('id') videoId: string, @GetAuthUser('id') userId: string) {
 		return this.videosService.delete(videoId, userId)
+	}
+
+	@Post(':id/cancel-schedule')
+	@Auth()
+	cancelSchedule(@Param('id') id: string, @GetAuthUser('id') userId: string) {
+		return this.videosService.cancelSchedule(id, userId)
+	}
+
+	@Post(':id/retry')
+	@Auth()
+	retryUpload(@Param('id') id: string, @GetAuthUser('id') userId: string) {
+		return this.videosService.retryUpload(id, userId)
 	}
 }

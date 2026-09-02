@@ -36,6 +36,8 @@ model Account {
   username String?
   profilePath String?
 
+  avatarPath String?
+
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -77,6 +79,8 @@ model Video {
   tiktokVideoUrl String?
   errorMessage String?
 
+  bannerPath String?
+
   accountId   String
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -117,6 +121,7 @@ enum VideoStatus {
   FAILED
   SCHEDULED
   POSTED
+  CANCELED
 }
 
 enum BrowserSessionStatus {

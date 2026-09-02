@@ -1,8 +1,9 @@
+import { InjectQueue } from '@nestjs/bullmq'
 import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { VideoStatus } from '@prisma/client'
-import { Job } from 'bullmq'
+import { Job, Queue } from 'bullmq'
 import { existsSync, unlinkSync } from 'fs'
-import { chromium } from 'patchright'
+import { BrowserContext, chromium } from 'patchright'
 import { resolve } from 'path'
 import { EventsGateway } from 'src/events/events.gateway'
 import { PrismaService } from 'src/prisma/prisma.service'
@@ -15,7 +16,8 @@ export class TiktokUploadService {
 	constructor(
 		private readonly prismaService: PrismaService,
 		private readonly videosService: VideosService,
-		private readonly eventsGateway: EventsGateway
+		private readonly eventsGateway: EventsGateway,
+		@InjectQueue('tiktok') private readonly queue: Queue
 	) {}
 
 	async uploadVideo(job: Job<{ videoId: string }>) {
@@ -256,6 +258,17 @@ export class TiktokUploadService {
 				unlinkSync(filePath)
 				this.logger.log(`[Upload] Временный файл удален.`)
 			}
+
+			await this.queue.add(
+				'videoBanner',
+				{
+					videoId
+				},
+				{
+					delay: 2 * 60 * 1000,
+					attempts: 3
+				}
+			)
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : 'Неизвестная ошибка'
@@ -277,6 +290,57 @@ export class TiktokUploadService {
 			if (context) {
 				await context.close().catch(() => {})
 				this.logger.log(`[Upload] Браузер закрыт.`)
+			}
+		}
+	}
+
+	async getBannerVideoImage(job: Job<{ videoId: string }>) {
+		const { videoId } = job.data
+		const video = await this.videosService.findById(videoId)
+
+		let context: BrowserContext | null = null
+
+		try {
+			context = await chromium.launchPersistentContext(
+				`profiles/${video.accountId}`,
+				{
+					headless: false,
+					executablePath: '/usr/bin/google-chrome',
+					args: ['--no-sandbox', '--disable-setuid-sandbox']
+				}
+			)
+
+			this.logger.log('Started banner')
+
+			const page = await context.newPage()
+			await page.goto(`https://tiktok.com/@${video.account.profilePath}`)
+
+			const videoBlock = await page.locator(`a[href="${video.tiktokVideoUrl}"]`)
+
+			await videoBlock.waitFor({
+				state: 'visible',
+				timeout: 10000
+			})
+
+			const bannerPath = await videoBlock.locator('img').getAttribute('src')
+
+			await this.prismaService.video.update({
+				where: {
+					id: videoId
+				},
+				data: {
+					bannerPath
+				}
+			})
+		} catch (error) {
+			const errorText = error instanceof Error ? error.message : String(error)
+			this.logger.error(`[Get banner video] Ошибка: ${errorText}`)
+
+			throw error
+		} finally {
+			if (context) {
+				await context.close().catch(() => {})
+				this.logger.log(`[Get banner video] Браузер закрыт.`)
 			}
 		}
 	}
