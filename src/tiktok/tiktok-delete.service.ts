@@ -45,21 +45,46 @@ export class TiktokDeleteService {
 			await videoItem.click()
 
 			const settingsButton = await page.locator('div[data-e2e="video-setting"]')
+			const settingsButtonCount = await settingsButton.count()
 
-			await settingsButton.waitFor({
-				state: 'visible',
-				timeout: 10000
-			})
+			if (settingsButtonCount > 0) {
+				await settingsButton.waitFor({
+					state: 'visible',
+					timeout: 10000
+				})
 
-			await settingsButton.hover()
+				await settingsButton.hover()
 
-			const deleteButton = page.getByText('Delete', { exact: true }).last()
+				const deleteButton = page.getByText('Delete', { exact: true }).last()
 
-			await deleteButton.scrollIntoViewIfNeeded()
+				await deleteButton.scrollIntoViewIfNeeded()
 
-			await deleteButton.click({
-				force: true
-			})
+				await deleteButton.click({
+					force: true
+				})
+			} else {
+				const settingsButtonTwo = await page.locator(
+					'div:nth-child(2) > .tiktok-12m0k8p > .tux-web-canary > .tux-button__element__ZBq38f_v1_8_0'
+				)
+
+				await settingsButtonTwo.waitFor({
+					state: 'visible',
+					timeout: 10000
+				})
+
+				await settingsButtonTwo.click()
+
+				const deleteSettingsButton = await page
+					.locator('div')
+					.filter({ hasText: /^Delete$/ })
+
+				await deleteSettingsButton.waitFor({
+					state: 'visible',
+					timeout: 10000
+				})
+
+				await deleteSettingsButton.click()
+			}
 
 			const confirmDeleteButton = await page.locator(
 				'button[data-e2e="video-modal-delete"]'
