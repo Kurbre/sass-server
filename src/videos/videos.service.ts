@@ -3,6 +3,7 @@ import {
 	BadRequestException,
 	Injectable,
 	Logger,
+	NotAcceptableException,
 	NotFoundException
 } from '@nestjs/common'
 import { Queue } from 'bullmq'
@@ -25,7 +26,7 @@ export class VideosService {
 
 	constructor(
 		private readonly prismaService: PrismaService,
-		@InjectQueue('browser') private readonly queue: Queue
+		@InjectQueue('tiktok') private readonly queue: Queue
 	) {}
 
 	async create(userId: string, file: Express.Multer.File, dto: CreateVideoDto) {
@@ -75,6 +76,30 @@ export class VideosService {
 		)
 
 		return video
+	}
+
+	async delete(videoId: string, userId: string) {
+		const video = await this.findById(videoId)
+
+		if (video.userId !== userId) throw new NotAcceptableException('Not access.')
+
+		await this.queue.add('delete', { videoId })
+
+		return {
+			success: true
+		}
+	}
+
+	async findByUserId(userId: string) {
+		return this.prismaService.video.findMany({
+			where: {
+				userId
+			},
+			include: {
+				account: true,
+				user: true
+			}
+		})
 	}
 
 	async findById(id: string) {

@@ -3,13 +3,15 @@ import { Job } from 'bullmq'
 import { TiktokLoginService } from './tiktok-login.service'
 import { TiktokUploadService } from './tiktok-upload.service'
 import { TiktokService } from './tiktok.service'
+import { TiktokDeleteService } from './tiktok-delete.service'
 
 @Processor('tiktok')
 export class TiktokProcessor extends WorkerHost {
 	constructor(
 		private readonly tiktokLoginService: TiktokLoginService,
 		private readonly tiktokUploadService: TiktokUploadService,
-		private readonly tiktokService: TiktokService
+		private readonly tiktokService: TiktokService,
+		private readonly tiktokDeleteService: TiktokDeleteService
 	) {
 		super()
 	}
@@ -19,5 +21,6 @@ export class TiktokProcessor extends WorkerHost {
 		if (job.name === 'uploaded')
 			return this.tiktokUploadService.uploadVideo(job)
 		if (job.name === 'logout') return this.tiktokService.logout(job)
+		if (job.name === 'delete') return this.tiktokDeleteService.delete(job)
 	}
 }

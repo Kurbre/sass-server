@@ -89,6 +89,18 @@ export class AccountsService {
 		})
 	}
 
+	async findByUserId(userId: string) {
+		return this.prismaService.account.findMany({
+			where: {
+				userId
+			},
+			include: {
+				videos: true,
+				sessions: true
+			}
+		})
+	}
+
 	async findById(id: string, userId: string) {
 		const account = await this.prismaService.account.findUnique({
 			where: { id }

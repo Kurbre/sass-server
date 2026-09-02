@@ -7,6 +7,8 @@ import { VideosModule } from 'src/videos/videos.module'
 import { AccountsModule } from 'src/accounts/accounts.module'
 import { TiktokLoginService } from './tiktok-login.service'
 import { TiktokUploadService } from './tiktok-upload.service'
+import { TiktokDeleteService } from './tiktok-delete.service'
+import { NotificationsModule } from 'src/notifications/notifications.module'
 
 @Module({
 	controllers: [TiktokController],
@@ -14,9 +16,10 @@ import { TiktokUploadService } from './tiktok-upload.service'
 		TiktokService,
 		TiktokProcessor,
 		TiktokLoginService,
-		TiktokUploadService
+		TiktokUploadService,
+		TiktokDeleteService
 	],
-	imports: [VideosModule, AccountsModule],
+	imports: [VideosModule, AccountsModule, NotificationsModule],
 	exports: [TiktokService]
 })
 export class TiktokModule {}

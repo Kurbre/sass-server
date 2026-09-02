@@ -1,8 +1,11 @@
 import {
 	Body,
 	Controller,
+	Delete,
 	FileTypeValidator,
+	Get,
 	MaxFileSizeValidator,
+	Param,
 	ParseFilePipe,
 	Post,
 	UploadedFile,
@@ -25,6 +28,12 @@ if (!fs.existsSync(uploadDir)) {
 @Controller('videos')
 export class VideosController {
 	constructor(private readonly videosService: VideosService) {}
+
+	@Get('me')
+	@Auth()
+	findByUserId(@GetAuthUser('id') userId: string) {
+		return this.videosService.findByUserId(userId)
+	}
 
 	@Auth()
 	@Post()
@@ -49,5 +58,11 @@ export class VideosController {
 		@GetAuthUser('id') userId: string
 	) {
 		return this.videosService.create(userId, file, dto)
+	}
+
+	@Delete(':id')
+	@Auth()
+	delete(@Param('id') videoId: string, @GetAuthUser('id') userId: string) {
+		return this.videosService.delete(videoId, userId)
 	}
 }

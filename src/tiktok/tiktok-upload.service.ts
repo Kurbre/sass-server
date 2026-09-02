@@ -45,7 +45,7 @@ export class TiktokUploadService {
 			context = await chromium.launchPersistentContext(
 				`profiles/${video.accountId}`,
 				{
-					headless: false,
+					headless: true,
 					executablePath: '/usr/bin/google-chrome',
 					args: ['--no-sandbox', '--disable-setuid-sandbox']
 				}
@@ -80,7 +80,7 @@ export class TiktokUploadService {
 							if (typeof itemId === 'string' && itemId.startsWith('http')) {
 								tiktokVideoUrl = itemId
 							} else {
-								const username = video.account?.username || 'user'
+								const username = video.account?.profilePath || 'user'
 								tiktokVideoUrl = `https://www.tiktok.com/@${username}/video/${itemId}`
 							}
 							this.logger.log(

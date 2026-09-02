@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post } from '@nestjs/common'
+import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { AccountsService } from './accounts.service'
 import { Auth } from 'src/auth/decorators/auth.decorator'
 import { GetAuthUser } from 'src/users/decorators/users.decorator'
@@ -15,6 +15,12 @@ export class AccountsController {
 		@Param('accountId') accountId: string
 	) {
 		return this.accountsService.connectTiktok(accountId, userId)
+	}
+
+	@Get('me')
+	@Auth()
+	findByUserId(@GetAuthUser('id') userId: string) {
+		return this.accountsService.findByUserId(userId)
 	}
 
 	@Auth()
