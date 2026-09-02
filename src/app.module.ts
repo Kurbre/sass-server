@@ -14,6 +14,7 @@ import { VideosModule } from './videos/videos.module'
 import { EventsModule } from './events/events.module'
 import { CronTasksModule } from './cron-tasks/cron-tasks.module'
 import { NotificationsModule } from './notifications/notifications.module'
+import { TiktokStatsModule } from './tiktok-stats/tiktok-stats.module';
 
 @Module({
 	imports: [
@@ -37,7 +38,8 @@ import { NotificationsModule } from './notifications/notifications.module'
 		VideosModule,
 		EventsModule,
 		CronTasksModule,
-		NotificationsModule
+		NotificationsModule,
+		TiktokStatsModule
 	],
 	controllers: [],
 	providers: []

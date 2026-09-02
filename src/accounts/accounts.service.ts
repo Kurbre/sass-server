@@ -101,14 +101,15 @@ export class AccountsService {
 		})
 	}
 
-	async findById(id: string, userId: string) {
+	async findById(id: string, userId?: string) {
 		const account = await this.prismaService.account.findUnique({
 			where: { id }
 		})
 		if (!account) throw new NotFoundException('Account not found')
 
-		if (account.userId !== userId)
-			throw new NotAcceptableException('Not access')
+		if (userId)
+			if (account.userId !== userId)
+				throw new NotAcceptableException('Not access')
 
 		return account
 	}

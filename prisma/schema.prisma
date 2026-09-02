@@ -38,6 +38,8 @@ model Account {
 
   avatarPath String?
 
+  stats AccountStats?
+
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -107,6 +109,20 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@map("notifications")
+}
+
+model AccountStats {
+  id String @id @default(cuid())
+
+  accountId String @unique
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  followers   Int      @default(0)
+  following   Int      @default(0)
+  likes       Int      @default(0)
+
+  @@map("account_stats")
 }
 
 enum AccountType {
