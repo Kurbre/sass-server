@@ -9,4 +9,9 @@ export class TiktokStatsController {
 	asdsd() {
 		return this.tiktokStatsService.startAccountMetrics()
 	}
+
+	@Get('video')
+	asdsd12() {
+		return this.tiktokStatsService.startVideoMetrics()
+	}
 }

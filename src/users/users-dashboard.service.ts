@@ -16,7 +16,8 @@ export class UsersDashboardService {
 			postedVideos,
 			scheduledVideos,
 			failedVideos,
-			canceledVideos
+			canceledVideos,
+			accounts
 		] = await Promise.all([
 			this.prismaService.video.count({
 				where: {
@@ -46,15 +47,41 @@ export class UsersDashboardService {
 					userId,
 					status: VideoStatus.CANCELED
 				}
+			}),
+			this.prismaService.account.findMany({
+				where: {
+					userId
+				},
+				include: {
+					stats: true
+				}
 			})
 		])
+
+		const totalLikes = accounts.reduce(
+			(acc, cur) => acc + (cur.stats?.likes ?? 0),
+			0
+		)
+
+		const totalFollowers = accounts.reduce(
+			(acc, cur) => acc + (cur.stats?.followers ?? 0),
+			0
+		)
+
+		const totalFollowing = accounts.reduce(
+			(acc, cur) => acc + (cur.stats?.following ?? 0),
+			0
+		)
 
 		return {
 			totalVideos,
 			postedVideos,
 			scheduledVideos,
 			failedVideos,
-			canceledVideos
+			canceledVideos,
+			totalLikes,
+			totalFollowers,
+			totalFollowing
 		}
 	}
 }

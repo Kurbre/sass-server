@@ -4,6 +4,7 @@ import { AccountsModule } from 'src/accounts/accounts.module'
 import { TiktokStatsController } from './tiktok-stats.controller'
 import { TiktokStatsService } from './tiktok-stats.service'
 import { TiktokStatsProcessor } from './tiktok-stats.processor'
+import { VideosModule } from 'src/videos/videos.module'
 
 @Module({
 	controllers: [TiktokStatsController],
@@ -12,7 +13,8 @@ import { TiktokStatsProcessor } from './tiktok-stats.processor'
 		AccountsModule,
 		BullModule.registerQueue({
 			name: 'tiktok-stats'
-		})
+		}),
+		VideosModule
 	]
 })
 export class TiktokStatsModule {}

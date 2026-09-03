@@ -88,6 +88,12 @@ model Video {
 
   scheduledAt DateTime?
 
+  likes   Int      @default(0)
+  comments   Int      @default(0)
+  views       Int      @default(0)
+  collect       Int      @default(0)
+  shares       Int      @default(0)
+
   userId String
   user User @relation(fields:[userId], references:[id], onDelete: Cascade)
 
@@ -110,6 +116,7 @@ model Notification {
 
   @@map("notifications")
 }
+
 
 model AccountStats {
   id String @id @default(cuid())
