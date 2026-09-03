@@ -88,11 +88,12 @@ model Video {
 
   scheduledAt DateTime?
 
-  likes   Int      @default(0)
-  comments   Int      @default(0)
-  views       Int      @default(0)
-  collect       Int      @default(0)
-  shares       Int      @default(0)
+  views           Int      @default(0)
+  likes           Int      @default(0)
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+
+  statsHistory    VideoStats[]
 
   userId String
   user User @relation(fields:[userId], references:[id], onDelete: Cascade)
@@ -117,6 +118,23 @@ model Notification {
   @@map("notifications")
 }
 
+model VideoStats {
+  id          String   @id @default(cuid())
+
+  videoId     String
+  video       Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  views       Int      @default(0)
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  shares      Int      @default(0)
+  favorites   Int      @default(0)
+
+  createdAt   DateTime @default(now())
+
+  @@index([videoId, createdAt])
+  @@map("video_stats")
+}
 
 model AccountStats {
   id String @id @default(cuid())
@@ -128,6 +146,8 @@ model AccountStats {
   followers   Int      @default(0)
   following   Int      @default(0)
   likes       Int      @default(0)
+
+  createdAt   DateTime @default(now())
 
   @@map("account_stats")
 }

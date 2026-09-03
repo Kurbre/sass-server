@@ -76,17 +76,9 @@ export class TiktokStatsService {
 				.locator('strong[data-e2e="likes-count"]')
 				.textContent()
 
-			await this.prismaService.accountStats.upsert({
-				where: {
-					accountId
-				},
-				create: {
+			await this.prismaService.accountStats.create({
+				data: {
 					accountId,
-					followers: Number(followers),
-					following: Number(following),
-					likes: Number(likes)
-				},
-				update: {
 					followers: Number(followers),
 					following: Number(following),
 					likes: Number(likes)
@@ -212,15 +204,28 @@ export class TiktokStatsService {
 				throw new Error(`Failed to views metrics for video ${videoId}`)
 			}
 
-			await this.prismaService.video.update({
-				where: { id: videoId },
-				data: {
-					views: stats.playCount,
-					likes: stats.diggCount,
-					comments: stats.commentCount,
-					shares: stats.shareCount
-				}
-			})
+			await this.prismaService.$transaction([
+				this.prismaService.video.update({
+					where: { id: videoId },
+					data: {
+						views: stats.playCount,
+						likes: stats.diggCount,
+						comments: stats.commentCount,
+						shares: stats.shareCount
+					}
+				}),
+
+				this.prismaService.videoStats.create({
+					data: {
+						videoId,
+						views: stats.playCount,
+						likes: stats.diggCount,
+						comments: stats.commentCount,
+						shares: stats.shareCount,
+						favorites: stats.collectCount
+					}
+				})
+			])
 		} catch (error) {
 			this.logger.error(
 				`FAILED ${job.name} ${JSON.stringify(job.data)}`,
