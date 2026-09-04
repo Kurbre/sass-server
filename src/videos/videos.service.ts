@@ -274,4 +274,48 @@ export class VideosService {
 
 		return { targetTime: targetTime.toDate(), delay }
 	}
+
+	async getCalendarScheduled(userId: string, from?: string, to?: string) {
+		const whereClause: any = {
+			userId,
+			scheduledAt: { not: null },
+			status: VideoStatus.SCHEDULED
+		}
+
+		if (from || to) {
+			whereClause.scheduledAt = {
+				...(from
+					? { gte: dayjs.tz(from, 'Europe/Kyiv').startOf('day').toDate() }
+					: {}),
+				...(to
+					? { lte: dayjs.tz(to, 'Europe/Kyiv').endOf('day').toDate() }
+					: {})
+			}
+		}
+
+		const videos = await this.prismaService.video.findMany({
+			where: whereClause,
+			orderBy: {
+				scheduledAt: 'asc'
+			}
+		})
+
+		const calendar: Record<string, typeof videos> = {}
+
+		for (const video of videos) {
+			if (!video.scheduledAt) continue
+
+			const dateKey = dayjs(video.scheduledAt)
+				.tz('Europe/Kyiv')
+				.format('YYYY-MM-DD')
+
+			if (!calendar[dateKey]) {
+				calendar[dateKey] = []
+			}
+
+			calendar[dateKey].push(video)
+		}
+
+		return calendar
+	}
 }

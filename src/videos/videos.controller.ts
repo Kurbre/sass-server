@@ -9,6 +9,7 @@ import {
 	ParseFilePipe,
 	Patch,
 	Post,
+	Query,
 	UploadedFile,
 	UseInterceptors
 } from '@nestjs/common'
@@ -35,6 +36,16 @@ export class VideosController {
 	@Auth()
 	findByUserId(@GetAuthUser('id') userId: string) {
 		return this.videosService.findByUserId(userId)
+	}
+
+	@Auth()
+	@Get('calendar')
+	calendar(
+		@GetAuthUser('id') id: string,
+		@Query('from') from: string,
+		@Query('to') to: string
+	) {
+		return this.videosService.getCalendarScheduled(id, from, to)
 	}
 
 	@Get(':id')
