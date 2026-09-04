@@ -226,7 +226,8 @@ export class TiktokStatsService {
 						views: stats.playCount,
 						likes: stats.diggCount,
 						comments: stats.commentCount,
-						shares: stats.shareCount
+						shares: stats.shareCount,
+						favorites: stats.collectCount
 					}
 				}),
 

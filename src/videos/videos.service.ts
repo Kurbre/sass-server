@@ -148,4 +148,26 @@ export class VideosService {
 			success: true
 		}
 	}
+
+	async dashboard(videoId: string, userId: string) {
+		const video = await this.findById(videoId, userId)
+
+		const chart = video.statsHistory.map(
+			({ id, createdAt, videoId, ...rest }) => ({
+				date: createdAt,
+				...rest
+			})
+		)
+
+		const { comments, views, likes, shares, favorites } = video
+
+		return {
+			comments,
+			views,
+			likes,
+			shares,
+			favorites,
+			chart
+		}
+	}
 }

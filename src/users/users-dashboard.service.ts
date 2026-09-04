@@ -59,17 +59,17 @@ export class UsersDashboardService {
 		])
 
 		const totalAccountsLikes = accounts.reduce(
-			(acc, cur) => acc + (cur.stats?.likes ?? 0),
+			(acc, cur) => acc + (cur.stats.at(-1)?.likes ?? 0),
 			0
 		)
 
 		const totalAccountsFollowers = accounts.reduce(
-			(acc, cur) => acc + (cur.stats?.followers ?? 0),
+			(acc, cur) => acc + (cur.stats.at(-1)?.followers ?? 0),
 			0
 		)
 
 		const totalAccountsFollowing = accounts.reduce(
-			(acc, cur) => acc + (cur.stats?.following ?? 0),
+			(acc, cur) => acc + (cur.stats.at(-1)?.following ?? 0),
 			0
 		)
 

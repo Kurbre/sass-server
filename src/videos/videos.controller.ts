@@ -83,4 +83,10 @@ export class VideosController {
 	retryUpload(@Param('id') id: string, @GetAuthUser('id') userId: string) {
 		return this.videosService.retryUpload(id, userId)
 	}
+
+	@Auth()
+	@Get(':id/dashboard')
+	dashboard(@Param('id') id: string, @GetAuthUser('id') userId: string) {
+		return this.videosService.dashboard(id, userId)
+	}
 }

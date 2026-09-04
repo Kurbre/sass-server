@@ -23,6 +23,12 @@ export class AccountsController {
 		return this.accountsService.findByUserId(userId)
 	}
 
+	@Get(':id')
+	@Auth()
+	findById(@GetAuthUser('id') userId: string, @Param('id') id: string) {
+		return this.accountsService.findById(id, userId)
+	}
+
 	@Auth()
 	@Post()
 	create(@GetAuthUser('id') userId: string, @Body() dto: CreateAccountDto) {
@@ -39,5 +45,11 @@ export class AccountsController {
 	@Delete(':id')
 	delete(@Param('id') id: string, @GetAuthUser('id') userId: string) {
 		return this.accountsService.delete(id, userId)
+	}
+
+	@Auth()
+	@Get(':id/dashboard')
+	dashboard(@Param('id') id: string, @GetAuthUser('id') userId: string) {
+		return this.accountsService.dashboard(id, userId)
 	}
 }

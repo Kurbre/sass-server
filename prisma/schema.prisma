@@ -38,7 +38,7 @@ model Account {
 
   avatarPath String?
 
-  stats AccountStats?
+  stats AccountStats[]
 
   userId String
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -92,6 +92,7 @@ model Video {
   likes           Int      @default(0)
   comments        Int      @default(0)
   shares          Int      @default(0)
+  favorites       Int      @default(0)
 
   statsHistory    VideoStats[]
 
@@ -139,7 +140,7 @@ model VideoStats {
 model AccountStats {
   id String @id @default(cuid())
 
-  accountId String @unique
+  accountId String
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 

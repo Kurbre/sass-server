@@ -103,7 +103,11 @@ export class AccountsService {
 
 	async findById(id: string, userId?: string) {
 		const account = await this.prismaService.account.findUnique({
-			where: { id }
+			where: { id },
+			include: {
+				stats: true,
+				videos: true
+			}
 		})
 		if (!account) throw new NotFoundException('Account not found')
 
@@ -143,6 +147,26 @@ export class AccountsService {
 
 		return {
 			success: true
+		}
+	}
+
+	async dashboard(accountId: string, userId: string) {
+		const account = await this.findById(accountId, userId)
+
+		const chart = account.stats.map(i => ({
+			date: i.createdAt,
+			followers: i.followers,
+			following: i.following,
+			likes: i.likes
+		}))
+
+		const stat = account.stats.at(-1)
+
+		return {
+			following: stat?.following ?? 0,
+			followers: stat?.followers ?? 0,
+			likes: stat?.likes ?? 0,
+			chart
 		}
 	}
 }
