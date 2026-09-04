@@ -103,7 +103,8 @@ export class VideosService {
 			where: { id },
 			include: {
 				account: true,
-				user: true
+				user: true,
+				statsHistory: true
 			}
 		})
 		if (!video) throw new NotFoundException('Video not found')

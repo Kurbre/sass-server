@@ -66,15 +66,30 @@ export class TiktokStatsService {
 			const page = await context.newPage()
 			await page.goto(`https://tiktok.com/@${account.profilePath}`)
 
-			const following = await page
-				.locator('strong[data-e2e="following-count"]')
-				.textContent()
-			const followers = await page
-				.locator('strong[data-e2e="followers-count"]')
-				.textContent()
-			const likes = await page
-				.locator('strong[data-e2e="likes-count"]')
-				.textContent()
+			const followingItem = await page.locator(
+				'strong[data-e2e="following-count"]'
+			)
+			await followingItem.waitFor({
+				state: 'visible',
+				timeout: 10000
+			})
+			const following = await followingItem.textContent()
+
+			const followersItem = await page.locator(
+				'strong[data-e2e="followers-count"]'
+			)
+			await followersItem.waitFor({
+				state: 'visible',
+				timeout: 10000
+			})
+			const followers = await followersItem.textContent()
+
+			const likesItem = await page.locator('strong[data-e2e="likes-count"]')
+			await likesItem.waitFor({
+				state: 'visible',
+				timeout: 10000
+			})
+			const likes = await likesItem.textContent()
 
 			await this.prismaService.accountStats.create({
 				data: {

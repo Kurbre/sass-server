@@ -58,17 +58,17 @@ export class UsersDashboardService {
 			})
 		])
 
-		const totalLikes = accounts.reduce(
+		const totalAccountsLikes = accounts.reduce(
 			(acc, cur) => acc + (cur.stats?.likes ?? 0),
 			0
 		)
 
-		const totalFollowers = accounts.reduce(
+		const totalAccountsFollowers = accounts.reduce(
 			(acc, cur) => acc + (cur.stats?.followers ?? 0),
 			0
 		)
 
-		const totalFollowing = accounts.reduce(
+		const totalAccountsFollowing = accounts.reduce(
 			(acc, cur) => acc + (cur.stats?.following ?? 0),
 			0
 		)
@@ -79,9 +79,9 @@ export class UsersDashboardService {
 			scheduledVideos,
 			failedVideos,
 			canceledVideos,
-			totalLikes,
-			totalFollowers,
-			totalFollowing
+			totalAccountsLikes,
+			totalAccountsFollowers,
+			totalAccountsFollowing
 		}
 	}
 }
