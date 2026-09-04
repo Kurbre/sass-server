@@ -22,13 +22,30 @@ export class TiktokUploadService {
 
 	async uploadVideo(job: Job<{ videoId: string }>) {
 		const { videoId } = job.data
-		const video = await this.videosService.findById(videoId)
-		let context
 
-		const filePath = resolve(video.file)
+		let context
+		let filePath: string | null = null
 		let tiktokVideoUrl: string | null = null
 
 		try {
+			const video = await this.prismaService.video.findUnique({
+				where: {
+					id: videoId
+				},
+				include: {
+					account: true
+				}
+			})
+
+			if (!video) {
+				this.logger.warn(
+					`[Upload] Видео ${videoId} не найдено в БД. Задача отменена.`
+				)
+				return
+			}
+
+			filePath = resolve(video.file)
+
 			this.logger.log(`[Upload] Начало загрузки видео ${videoId}`)
 
 			// 1. Скачиваем видео во временный файл
@@ -291,6 +308,18 @@ export class TiktokUploadService {
 				await context.close().catch(() => {})
 				this.logger.log(`[Upload] Браузер закрыт.`)
 			}
+
+			if (filePath && existsSync(filePath)) {
+				try {
+					unlinkSync(filePath)
+					this.logger.log(`[Upload] Временный файл успешно удален из системы.`)
+				} catch (fsError) {
+					this.logger.error(
+						`[Upload] Не удалось удалить файл ${filePath}:`,
+						fsError
+					)
+				}
+			}
 		}
 	}
 
@@ -365,21 +394,36 @@ export class TiktokUploadService {
 			updateData.errorMessage = extraData.errorMessage
 		}
 
-		// Обновляем запись в базе данных
-		await this.prismaService.video.update({
-			where: { id: videoId },
-			data: updateData
-		})
+		try {
+			// Обновляем запись в базе данных
+			await this.prismaService.video.update({
+				where: { id: videoId },
+				data: updateData
+			})
 
-		// Отправляем событие изменения статуса через веб-сокет
-		this.eventsGateway.emitToVideo(videoId, 'video:status_changed', {
-			videoId,
-			status,
-			progress,
-			message,
-			tiktokVideoUrl: extraData?.tiktokVideoUrl ?? null,
-			errorMessage: extraData?.errorMessage ?? null,
-			timestamp: new Date().toISOString()
-		})
+			// Отправляем событие изменения статуса через веб-сокет
+			this.eventsGateway.emitToVideo(videoId, 'video:status_changed', {
+				videoId,
+				status,
+				progress,
+				message,
+				tiktokVideoUrl: extraData?.tiktokVideoUrl ?? null,
+				errorMessage: extraData?.errorMessage ?? null,
+				timestamp: new Date().toISOString()
+			})
+		} catch (error) {
+			if (
+				typeof error === 'object' &&
+				error !== null &&
+				'code' in error &&
+				error.code === 'P2025'
+			) {
+				this.logger.warn(
+					`[VideoState] Запись ${videoId} удалена. Обновление статуса проигнорировано.`
+				)
+				return
+			}
+			throw error
+		}
 	}
 }

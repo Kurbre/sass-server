@@ -15,6 +15,9 @@ import dayjs from 'dayjs'
 import customParseFormat from 'dayjs/plugin/customParseFormat'
 import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
+import { AccountsService } from 'src/accounts/accounts.service'
+import { UpdateVideoDto } from './dto/update-video.dto'
+import { domainToASCII } from 'url'
 
 dayjs.extend(customParseFormat)
 dayjs.extend(utc)
@@ -24,7 +27,8 @@ dayjs.extend(timezone)
 export class VideosService {
 	constructor(
 		private readonly prismaService: PrismaService,
-		@InjectQueue('tiktok') private readonly queue: Queue
+		@InjectQueue('tiktok') private readonly queue: Queue,
+		private readonly accountsService: AccountsService
 	) {}
 
 	async create(userId: string, file: Express.Multer.File, dto: CreateVideoDto) {
@@ -32,25 +36,24 @@ export class VideosService {
 			throw new BadRequestException('Видео файл обязателен для загрузки')
 		}
 
+		const account = await this.accountsService.findById(dto.accountId)
+
+		if (!account.connected)
+			throw new BadRequestException(
+				'Account disconnected, please reconnect the account.'
+			)
+
 		const safeDescription = dto.description?.trim() || ''
-		let targetTime: dayjs.Dayjs | null = null
+		let targetTime: Date | null = null
 		let delay = 0
 
 		if (dto.scheduledTime) {
-			targetTime = dayjs.tz(
-				dto.scheduledTime,
-				'DD.MM.YYYY HH:mm',
-				'Europe/Kyiv'
+			const parsedScheduledTime = this.parseAndValidateScheduledTime(
+				dto.scheduledTime
 			)
 
-			if (!targetTime.isValid()) {
-				throw new BadRequestException(
-					'Неверный формат даты. Используйте DD.MM.YYYY HH:mm'
-				)
-			}
-
-			const currentTime = dayjs().tz('Europe/Kyiv')
-			delay = targetTime.diff(currentTime)
+			delay = parsedScheduledTime.delay
+			targetTime = parsedScheduledTime.targetTime
 		}
 
 		const isScheduled = delay > 0
@@ -59,7 +62,7 @@ export class VideosService {
 		const video = await this.prismaService.video.create({
 			data: {
 				description: safeDescription,
-				scheduledAt: targetTime ? targetTime.toDate() : null,
+				scheduledAt: targetTime ? targetTime : null,
 				userId,
 				file: file.path,
 				status,
@@ -70,14 +73,80 @@ export class VideosService {
 		await this.queue.add(
 			'uploaded',
 			{ videoId: video.id },
-			isScheduled ? { delay } : undefined
+			{
+				...(isScheduled ? { delay } : {}),
+				jobId: video.id
+			}
 		)
 
 		return video
 	}
 
+	async updateScheduleVideo(
+		videoId: string,
+		userId: string,
+		dto: UpdateVideoDto
+	) {
+		const video = await this.findById(videoId, userId)
+
+		if (video.status !== VideoStatus.SCHEDULED)
+			throw new BadRequestException('No video is scheduled.')
+
+		const isScheduled = !!dto.scheduledTime
+
+		const data: {
+			description?: string
+			scheduledAt?: Date
+			accountId?: string
+		} = {}
+
+		if (isScheduled && dto.scheduledTime) {
+			const { delay, targetTime } = this.parseAndValidateScheduledTime(
+				dto.scheduledTime
+			)
+
+			const job = await this.queue.getJob(videoId)
+
+			if (!job) throw new NotFoundException('Scheduled job not found')
+
+			const state = await job.getState()
+
+			if (state !== 'delayed' && state !== 'waiting') {
+				throw new BadRequestException('Video publication has already started.')
+			}
+
+			await job.remove()
+
+			await this.queue.add(
+				'uploaded',
+				{ videoId },
+				{
+					delay,
+					jobId: videoId
+				}
+			)
+
+			data.scheduledAt = targetTime
+		}
+
+		if (dto.description) data.description = dto.description
+		if (dto.accountId) data.accountId = dto.accountId
+
+		await this.prismaService.video.update({
+			where: { id: videoId },
+			data
+		})
+
+		return video
+	}
+
 	async delete(videoId: string, userId: string) {
-		await this.findById(videoId, userId)
+		const video = await this.findById(videoId, userId)
+
+		if (video.status === VideoStatus.SCHEDULED) {
+			const job = await this.queue.getJob(videoId)
+			if (job) job.remove()
+		}
 
 		await this.queue.add('delete', { videoId })
 
@@ -118,6 +187,13 @@ export class VideosService {
 
 	async retryUpload(videoId: string, userId: string) {
 		await this.findById(videoId, userId)
+
+		await this.prismaService.video.update({
+			where: { id: videoId },
+			data: {
+				status: VideoStatus.PENDING
+			}
+		})
 
 		await this.queue.add('uploaded', { videoId }, { attempts: 3 })
 
@@ -169,5 +245,33 @@ export class VideosService {
 			favorites,
 			chart
 		}
+	}
+
+	private parseAndValidateScheduledTime(scheduledTime: string): {
+		targetTime: Date
+		delay: number
+	} {
+		const targetTime = dayjs.tz(
+			scheduledTime,
+			'DD.MM.YYYY HH:mm',
+			'Europe/Kyiv'
+		)
+
+		if (!targetTime.isValid()) {
+			throw new BadRequestException(
+				'Неверный формат даты. Используйте DD.MM.YYYY HH:mm'
+			)
+		}
+
+		const currentTime = dayjs().tz('Europe/Kyiv')
+		const delay = targetTime.diff(currentTime)
+
+		if (delay <= 0) {
+			throw new BadRequestException(
+				'The publication time must be in the future.'
+			)
+		}
+
+		return { targetTime: targetTime.toDate(), delay }
 	}
 }

@@ -7,6 +7,7 @@ import {
 	MaxFileSizeValidator,
 	Param,
 	ParseFilePipe,
+	Patch,
 	Post,
 	UploadedFile,
 	UseInterceptors
@@ -19,6 +20,7 @@ import { Auth } from 'src/auth/decorators/auth.decorator'
 import { diskStorage } from 'multer'
 import { extname } from 'path'
 import * as fs from 'fs'
+import { UpdateVideoDto } from './dto/update-video.dto'
 
 const uploadDir = './tmp'
 if (!fs.existsSync(uploadDir)) {
@@ -88,5 +90,15 @@ export class VideosController {
 	@Get(':id/dashboard')
 	dashboard(@Param('id') id: string, @GetAuthUser('id') userId: string) {
 		return this.videosService.dashboard(id, userId)
+	}
+
+	@Auth()
+	@Patch(':id')
+	update(
+		@Param('id') id: string,
+		@GetAuthUser('id') userId: string,
+		@Body() dto: UpdateVideoDto
+	) {
+		return this.videosService.updateScheduleVideo(id, userId, dto)
 	}
 }
