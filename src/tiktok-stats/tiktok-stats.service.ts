@@ -1,5 +1,5 @@
 import { InjectQueue } from '@nestjs/bullmq'
-import { Injectable, Logger } from '@nestjs/common'
+import { BadRequestException, Injectable, Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { AccountType, VideoStatus } from '@prisma/client'
 import { Job, Queue } from 'bullmq'
@@ -11,247 +11,282 @@ import { VideosService } from 'src/videos/videos.service'
 
 @Injectable()
 export class TiktokStatsService {
-	private readonly logger = new Logger(TiktokStatsService.name)
+  private readonly logger = new Logger(TiktokStatsService.name)
 
-	constructor(
-		private readonly prismaService: PrismaService,
-		@InjectQueue('tiktok-stats') private readonly queue: Queue,
-		private readonly accountsService: AccountsService,
-		private readonly videosService: VideosService
-	) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    @InjectQueue('tiktok-stats') private readonly queue: Queue,
+    private readonly accountsService: AccountsService,
+    private readonly videosService: VideosService
+  ) {}
 
-	@Cron(CronExpression.EVERY_30_MINUTES)
-	async startAccountMetrics() {
-		const accounts = await this.prismaService.account.findMany({
-			where: {
-				type: AccountType.TIKTOK,
-				connected: true
-			},
-			select: { id: true }
-		})
+  // Helper function to parse formatted numbers (e.g., "11k" -> 11000, "1.5M" -> 1500000)
+  private parseFormattedNumber(text: string): number {
+    if (!text) return 0
 
-		for (const account of accounts) {
-			await this.queue.add(
-				'get-metrics',
-				{
-					accountId: account.id
-				},
-				{
-					attempts: 3,
-					backoff: {
-						type: 'exponential',
-						delay: 5000
-					}
-				}
-			)
-		}
-	}
+    // Remove whitespace and commas
+    const cleaned = text.trim().replace(/,/g, '')
 
-	async getAccountMetrics(job: Job<{ accountId: string }>) {
-		const { accountId } = job.data
+    // Check for suffixes
+    const lastChar = cleaned.slice(-1).toLowerCase()
+    const numericPart = parseFloat(cleaned.slice(0, -1))
 
-		const account = await this.accountsService.findById(accountId)
+    if (isNaN(numericPart)) {
+      // If no suffix or invalid format, try parsing as regular number
+      const regularNum = parseFloat(cleaned)
+      return isNaN(regularNum) ? 0 : regularNum
+    }
 
-		let context: BrowserContext | null = null
-		try {
-			context = await chromium.launchPersistentContext(
-				`profiles/${accountId}`,
-				{
-					headless: true,
-					executablePath: '/usr/bin/google-chrome',
-					args: ['--no-sandbox', '--disable-setuid-sandbox']
-				}
-			)
+    switch (lastChar) {
+      case 'k':
+        return numericPart * 1000
+      case 'm':
+        return numericPart * 1000000
+      case 'b':
+        return numericPart * 1000000000
+      default:
+        // If no recognized suffix, try parsing the whole string
+        const num = parseFloat(cleaned)
+        return isNaN(num) ? 0 : num
+    }
+  }
 
-			const page = await context.newPage()
-			await page.goto(`https://tiktok.com/@${account.profilePath}`)
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async startAccountMetrics() {
+    const accounts = await this.prismaService.account.findMany({
+      where: {
+        type: AccountType.TIKTOK,
+        connected: true
+      },
+      select: { id: true }
+    })
 
-			const followingItem = await page.locator(
-				'strong[data-e2e="following-count"]'
-			)
-			await followingItem.waitFor({
-				state: 'visible',
-				timeout: 10000
-			})
-			const following = await followingItem.textContent()
+    for (const account of accounts) {
+      await this.queue.add(
+        'get-metrics',
+        {
+          accountId: account.id
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000
+          }
+        }
+      )
+    }
+  }
 
-			const followersItem = await page.locator(
-				'strong[data-e2e="followers-count"]'
-			)
-			await followersItem.waitFor({
-				state: 'visible',
-				timeout: 10000
-			})
-			const followers = await followersItem.textContent()
+  async getAccountMetrics(job: Job<{ accountId: string }>) {
+    const { accountId } = job.data
 
-			const likesItem = await page.locator('strong[data-e2e="likes-count"]')
-			await likesItem.waitFor({
-				state: 'visible',
-				timeout: 10000
-			})
-			const likes = await likesItem.textContent()
+    const account = await this.accountsService.findById(accountId)
 
-			await this.prismaService.accountStats.create({
-				data: {
-					accountId,
-					followers: Number(followers),
-					following: Number(following),
-					likes: Number(likes)
-				}
-			})
-		} catch (error) {
-			this.logger.error(
-				`FAILED ${job.name} ${JSON.stringify(job.data)}`,
-				error instanceof Error ? error.stack : String(error)
-			)
+    let context: BrowserContext | null = null
+    try {
+      context = await chromium.launchPersistentContext(
+        `profiles/${accountId}`,
+        {
+          headless: true,
+          executablePath: '/usr/bin/google-chrome',
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        }
+      )
 
-			throw error
-		} finally {
-			if (context) {
-				await context.close().catch(() => {})
-			}
-		}
-	}
+      const page = await context.newPage()
+      await page.goto(`https://tiktok.com/@${account.profilePath}`)
 
-	@Cron(CronExpression.EVERY_10_MINUTES)
-	async startVideoMetrics() {
-		const videos = await this.prismaService.video.findMany({
-			where: {
-				status: VideoStatus.POSTED,
-				tiktokVideoUrl: {
-					not: null
-				}
-			},
-			select: {
-				id: true
-			}
-		})
+      const followingItem = await page.locator(
+        'strong[data-e2e="following-count"]'
+      )
+      await followingItem.waitFor({
+        state: 'visible',
+        timeout: 10000
+      })
+      const following = await followingItem.textContent()
 
-		for (const video of videos) {
-			await this.queue.add(
-				'get-video-metrics',
-				{
-					videoId: video.id
-				},
-				{
-					attempts: 3,
-					backoff: {
-						type: 'exponential',
-						delay: 5000
-					}
-				}
-			)
-		}
-	}
+      const followersItem = await page.locator(
+        'strong[data-e2e="followers-count"]'
+      )
+      await followersItem.waitFor({
+        state: 'visible',
+        timeout: 10000
+      })
+      const followers = await followersItem.textContent()
 
-	async getVideoMetrics(job: Job<{ videoId: string }>) {
-		const { videoId } = job.data
-		const video = await this.videosService.findById(videoId)
+      const likesItem = await page.locator('strong[data-e2e="likes-count"]')
+      await likesItem.waitFor({
+        state: 'visible',
+        timeout: 10000
+      })
+      const likes = await likesItem.textContent()
 
-		if (!video || !video.tiktokVideoUrl) {
-			return
-		}
+      if(!likes || !followers || !following) {
+        throw new BadRequestException('Likes or Followers or Following not parsed')
+      }
 
-		let context: BrowserContext | null = null
+      await this.prismaService.accountStats.create({
+        data: {
+          accountId,
+          followers: this.parseFormattedNumber(followers),
+          following: this.parseFormattedNumber(following),
+          likes: this.parseFormattedNumber(likes),
+        }
+      })
+    } catch (error) {
+      this.logger.error(
+        `FAILED ${job.name} ${JSON.stringify(job.data)}`,
+        error instanceof Error ? error.stack : String(error)
+      )
 
-		try {
-			this.logger.log('statred video metrics')
-			context = await chromium.launchPersistentContext(
-				`profiles/${video.accountId}`,
-				{
-					headless: true,
-					executablePath: '/usr/bin/google-chrome',
-					args: ['--no-sandbox', '--disable-setuid-sandbox']
-				}
-			)
+      throw error
+    } finally {
+      if (context) {
+        await context.close().catch(() => {})
+      }
+    }
+  }
 
-			const page = await context.newPage()
-			await page.goto(video.tiktokVideoUrl, { waitUntil: 'domcontentloaded' })
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async startVideoMetrics() {
+    const videos = await this.prismaService.video.findMany({
+      where: {
+        status: VideoStatus.POSTED,
+        tiktokVideoUrl: {
+          not: null
+        }
+      },
+      select: {
+        id: true
+      }
+    })
 
-			await page.waitForTimeout(3000)
+    for (const video of videos) {
+      await this.queue.add(
+        'get-video-metrics',
+        {
+          videoId: video.id
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000
+          }
+        }
+      )
+    }
+  }
 
-			// Извлекаем точные метрики из JSON гидрации TikTok
-			const stats = await page
-				.waitForFunction(
-					() => {
-						try {
-							const script = document.getElementById(
-								'__UNIVERSAL_DATA_FOR_REHYDRATION__'
-							)
+  async getVideoMetrics(job: Job<{ videoId: string }>) {
+    const { videoId } = job.data
+    const video = await this.videosService.findById(videoId)
 
-							if (!script?.textContent) {
-								return null
-							}
+    if (!video || !video.tiktokVideoUrl) {
+      return
+    }
 
-							const data = JSON.parse(script.textContent)
+    let context: BrowserContext | null = null
 
-							const itemStruct =
-								data.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo
-									?.itemStruct
+    try {
+      this.logger.log('statred video metrics')
+      context = await chromium.launchPersistentContext(
+        `profiles/${video.accountId}`,
+        {
+          headless: true,
+          executablePath: '/usr/bin/google-chrome',
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        }
+      )
 
-							if (!itemStruct?.stats) {
-								return null
-							}
+      const page = await context.newPage()
+      await page.goto(video.tiktokVideoUrl, { waitUntil: 'domcontentloaded' })
 
-							return {
-								playCount: Number(itemStruct.stats.playCount ?? 0),
-								diggCount: Number(itemStruct.stats.diggCount ?? 0),
-								commentCount: Number(itemStruct.stats.commentCount ?? 0),
-								shareCount: Number(itemStruct.stats.shareCount ?? 0),
-								collectCount: Number(itemStruct.stats.collectCount ?? 0)
-							}
-						} catch {
-							return null
-						}
-					},
-					undefined,
-					{
-						timeout: 15000,
-						polling: 500
-					}
-				)
-				.then(async handle => {
-					const value = await handle.jsonValue()
-					await handle.dispose()
-					return value
-				})
-			if (stats === null) {
-				throw new Error(`Failed to views metrics for video ${videoId}`)
-			}
+      await page.waitForTimeout(3000)
 
-			await this.prismaService.$transaction([
-				this.prismaService.video.update({
-					where: { id: videoId },
-					data: {
-						views: stats.playCount,
-						likes: stats.diggCount,
-						comments: stats.commentCount,
-						shares: stats.shareCount,
-						favorites: stats.collectCount
-					}
-				}),
+      // Извлекаем точные метрики из JSON гидрации TikTok
+      const stats = await page
+        .waitForFunction(
+          () => {
+            try {
+              const script = document.getElementById(
+                '__UNIVERSAL_DATA_FOR_REHYDRATION__'
+              )
 
-				this.prismaService.videoStats.create({
-					data: {
-						videoId,
-						views: stats.playCount,
-						likes: stats.diggCount,
-						comments: stats.commentCount,
-						shares: stats.shareCount,
-						favorites: stats.collectCount
-					}
-				})
-			])
-		} catch (error) {
-			this.logger.error(
-				`FAILED ${job.name} ${JSON.stringify(job.data)}`,
-				error instanceof Error ? error.stack : String(error)
-			)
-			throw error
-		} finally {
-			if (context) {
-				await context.close().catch(() => {})
-			}
-		}
-	}
+              if (!script?.textContent) {
+                return null
+              }
+
+              const data = JSON.parse(script.textContent)
+
+              const itemStruct =
+                data.__DEFAULT_SCOPE__?.['webapp.video-detail']?.itemInfo
+                  ?.itemStruct
+
+              if (!itemStruct?.stats) {
+                return null
+              }
+
+              return {
+                playCount: Number(itemStruct.stats.playCount ?? 0),
+                diggCount: Number(itemStruct.stats.diggCount ?? 0),
+                commentCount: Number(itemStruct.stats.commentCount ?? 0),
+                shareCount: Number(itemStruct.stats.shareCount ?? 0),
+                collectCount: Number(itemStruct.stats.collectCount ?? 0)
+              }
+            } catch {
+              return null
+            }
+          },
+          undefined,
+          {
+            timeout: 15000,
+            polling: 500
+          }
+        )
+        .then(async handle => {
+          const value = await handle.jsonValue()
+          await handle.dispose()
+          return value
+        })
+      if (stats === null) {
+        throw new Error(`Failed to views metrics for video ${videoId}`)
+      }
+
+      await this.prismaService.$transaction([
+        this.prismaService.video.update({
+          where: { id: videoId },
+          data: {
+            views: stats.playCount,
+            likes: stats.diggCount,
+            comments: stats.commentCount,
+            shares: stats.shareCount,
+            favorites: stats.collectCount
+          }
+        }),
+
+        this.prismaService.videoStats.create({
+          data: {
+            videoId,
+            views: stats.playCount,
+            likes: stats.diggCount,
+            comments: stats.commentCount,
+            shares: stats.shareCount,
+            favorites: stats.collectCount
+          }
+        })
+      ])
+    } catch (error) {
+      this.logger.error(
+        `FAILED ${job.name} ${JSON.stringify(job.data)}`,
+        error instanceof Error ? error.stack : String(error)
+      )
+      throw error
+    } finally {
+      if (context) {
+        await context.close().catch(() => {})
+      }
+    }
+  }
 }

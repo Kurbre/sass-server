@@ -98,7 +98,7 @@ export class AuthService {
 				type: 'access'
 			},
 			{
-				expiresIn: '15d' // Changed for production
+				expiresIn: '15m' // Changed for production
 			}
 		)
 		const refreshToken = await this.jwtService.signAsync(
