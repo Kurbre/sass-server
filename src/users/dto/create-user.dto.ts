@@ -15,6 +15,12 @@ export class CreateUserDto {
 	@IsString()
 	@IsNotEmpty()
 	@MinLength(6)
+	@MaxLength(64)
+	username!: string
+
+	@IsString()
+	@IsNotEmpty()
+	@MinLength(6)
 	@MaxLength(32)
 	password!: string
 }

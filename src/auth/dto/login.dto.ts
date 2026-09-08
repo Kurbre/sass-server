@@ -9,7 +9,7 @@ import {
 export class LoginDto {
 	@IsEmail()
 	@IsNotEmpty()
-	email!: string
+	login!: string
 
 	@IsString()
 	@IsNotEmpty()

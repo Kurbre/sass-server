@@ -40,7 +40,7 @@ export class AuthService {
 	}
 
 	async login(dto: LoginDto) {
-		const user = await this.usersService.findByEmail(dto.email)
+		const user = await this.usersService.findByEmailOrUsername(dto.login)
 
 		const isValidPassword = await verify(user.password, dto.password)
 		if (!isValidPassword)

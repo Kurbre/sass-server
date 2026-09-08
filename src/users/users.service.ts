@@ -37,9 +37,11 @@ export class UsersService {
 		return user
 	}
 
-	async findByEmail(email: string) {
-		const user = await this.prismaService.user.findUnique({
-			where: { email },
+	async findByEmailOrUsername(login: string) {
+		const user = await this.prismaService.user.findFirst({
+			where: {
+				OR: [{ email: login }, { username: login }]
+			},
 			select: {
 				password: true,
 				id: true,
