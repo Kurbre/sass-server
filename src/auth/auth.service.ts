@@ -60,6 +60,10 @@ export class AuthService {
 	}
 
 	async getUserFromRefreshToken(refreshToken: string): Promise<string> {
+		if (!refreshToken) {
+			throw new UnauthorizedException('Refresh token not provided')
+		}
+
 		const payload = await this.jwtService.verifyAsync(refreshToken)
 
 		if (payload.type === 'access')
