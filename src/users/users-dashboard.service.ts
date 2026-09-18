@@ -11,13 +11,27 @@ export class UsersDashboardService {
 	) {}
 
 	async dashboard(userId: string) {
+		const startOfToday = new Date()
+		startOfToday.setHours(0, 0, 0, 0)
+
+		const startOfTomorrow = new Date(startOfToday)
+		startOfTomorrow.setDate(startOfTomorrow.getDate() + 1)
+
+		const startOfMonth = new Date(startOfToday)
+		startOfMonth.setDate(1)
+
+		const startOfNextMonth = new Date(startOfMonth)
+		startOfNextMonth.setMonth(startOfNextMonth.getMonth() + 1)
+
 		const [
 			totalVideos,
 			postedVideos,
 			scheduledVideos,
 			failedVideos,
 			canceledVideos,
-			accounts
+			accounts,
+			scheduledVideoToday,
+			postedVideosPerMonth
 		] = await Promise.all([
 			this.prismaService.video.count({
 				where: {
@@ -55,6 +69,26 @@ export class UsersDashboardService {
 				include: {
 					stats: true
 				}
+			}),
+			this.prismaService.video.count({
+				where: {
+					userId,
+					status: VideoStatus.SCHEDULED,
+					scheduledAt: {
+						gte: startOfToday,
+						lt: startOfTomorrow
+					}
+				}
+			}),
+			this.prismaService.video.count({
+				where: {
+					userId,
+					status: VideoStatus.POSTED,
+					createdAt: {
+						gte: startOfMonth,
+						lt: startOfNextMonth
+					}
+				}
 			})
 		])
 
@@ -81,7 +115,10 @@ export class UsersDashboardService {
 			canceledVideos,
 			totalAccountsLikes,
 			totalAccountsFollowers,
-			totalAccountsFollowing
+			totalAccountsFollowing,
+			accounts,
+			scheduledVideoToday,
+			postedVideosPerMonth
 		}
 	}
 }
