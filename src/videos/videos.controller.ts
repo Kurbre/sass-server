@@ -22,6 +22,7 @@ import { diskStorage } from 'multer'
 import { extname } from 'path'
 import * as fs from 'fs'
 import { UpdateVideoDto } from './dto/update-video.dto'
+import { GetVideosQueryDto } from './dto/get-videos-query.dto'
 
 const uploadDir = './tmp'
 if (!fs.existsSync(uploadDir)) {
@@ -34,8 +35,11 @@ export class VideosController {
 
 	@Get('me')
 	@Auth()
-	findByUserId(@GetAuthUser('id') userId: string) {
-		return this.videosService.findByUserId(userId)
+	findByUserId(
+		@GetAuthUser('id') userId: string,
+		@Query() params: GetVideosQueryDto
+	) {
+		return this.videosService.findByUserId(userId, params)
 	}
 
 	@Auth()
@@ -46,6 +50,12 @@ export class VideosController {
 		@Query('to') to: string
 	) {
 		return this.videosService.getCalendarScheduled(id, from, to)
+	}
+
+	@Auth()
+	@Get('count-video-an-week')
+	getCountVideoAnWeek(@GetAuthUser('id') id: string) {
+		return this.videosService.getCountVideoAnWeek(id)
 	}
 
 	@Get(':id')

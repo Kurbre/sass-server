@@ -17,7 +17,7 @@ import utc from 'dayjs/plugin/utc'
 import timezone from 'dayjs/plugin/timezone'
 import { AccountsService } from 'src/accounts/accounts.service'
 import { UpdateVideoDto } from './dto/update-video.dto'
-import { domainToASCII } from 'url'
+import { GetVideosQueryDto } from './dto/get-videos-query.dto'
 
 dayjs.extend(customParseFormat)
 dayjs.extend(utc)
@@ -155,15 +155,25 @@ export class VideosService {
 		}
 	}
 
-	async findByUserId(userId: string) {
+	async findByUserId(userId: string, params?: GetVideosQueryDto) {
 		return this.prismaService.video.findMany({
 			where: {
-				userId
+				userId,
+				...(params?.status && {
+					status: params.status
+				})
 			},
 			include: {
 				account: true,
 				user: true
-			}
+			},
+			orderBy: params?.sort
+				? {
+						createdAt: params.sort
+					}
+				: undefined,
+			skip: params?.skip,
+			take: params?.take
 		})
 	}
 
@@ -317,5 +327,43 @@ export class VideosService {
 		}
 
 		return calendar
+	}
+
+	async getCountVideoAnWeek(userId: string) {
+		const startOfWeek = dayjs().tz('Europe/Kyiv').startOf('week')
+		const endOfWeek = dayjs().tz('Europe/Kyiv').endOf('week')
+
+		const videos = await this.prismaService.video.findMany({
+			where: {
+				userId,
+				createdAt: {
+					gte: startOfWeek.toDate(),
+					lte: endOfWeek.toDate()
+				}
+			},
+			select: {
+				createdAt: true
+			}
+		})
+
+		const result = {
+			Пн: 0,
+			Вт: 0,
+			Ср: 0,
+			Чт: 0,
+			Пт: 0,
+			Сб: 0,
+			Вс: 0
+		}
+
+		const days = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб']
+
+		for (const video of videos) {
+			const day = dayjs(video.createdAt).tz('Europe/Kyiv').day()
+
+			result[days[day] as keyof typeof result]++
+		}
+
+		return result
 	}
 }
